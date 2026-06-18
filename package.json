@@ -7,10 +7,11 @@
     "gtwmcp": "./bin/gtwmcp.js"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22"
   },
   "type": "module",
   "scripts": {
+    "check": "node --check bin/gtwmcp.js && node --check src/cli.js && for f in src/commands/*.js src/config/*.js src/keychain/*.js src/mcp/*.js src/oauth/*.js src/serve/*.js test/*.js test/fixtures/*.js; do node --check \"$f\" || exit 1; done",
     "test": "node --test test/*.test.js",
     "test:ci": "node --test --test-reporter spec test/*.test.js"
   }
