@@ -80,7 +80,7 @@ export class SseClient {
 
     // Build GET headers
     const getHeaders = {
-      Accept: "text/event-stream",
+      Accept: "application/json, text/event-stream",
       ...this._headers(),
     };
 
@@ -293,7 +293,7 @@ export class SseClient {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Accept: "application/json",
+              Accept: "application/json, text/event-stream",
               ...this._headers(),
             },
             signal: ac.signal,

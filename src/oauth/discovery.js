@@ -16,19 +16,24 @@ import { URL } from 'node:url';
  * Discover OAuth server metadata from a server URL.
  * Best-effort — returns null on any failure.
  *
- * Two strategies, tried in order:
- *   1. GET <origin>/.well-known/oauth-protected-resource → follow auth_server
- *   2. POST <serverUrl> (no auth) → read resource_metadata from WWW-Authenticate header
+ * Three strategies, tried in order:
+ *   1. GET <serverUrl>.well-known/oauth-authorization-server (path-level)
+ *   2. GET <origin>/.well-known/oauth-protected-resource → follow auth_server
+ *   3. POST <serverUrl> (no auth) → read resource_metadata from WWW-Authenticate header
  *
  * @param {string} serverUrl - The MCP server URL (e.g. https://example.com/mcp)
  * @returns {Promise<OAuthMetadata|null>}
  */
 export async function discoverOAuthMetadata(serverUrl) {
-  // Strategy 1: root-level .well-known
-  let metadata = await discoverViaRootWellKnown(serverUrl);
+  // Strategy 1: path-level .well-known (server-relative)
+  let metadata = await discoverViaPathWellKnown(serverUrl);
   if (metadata) return metadata;
 
-  // Strategy 2: POST to server, read WWW-Authenticate 401 header
+  // Strategy 2: root-level .well-known
+  metadata = await discoverViaRootWellKnown(serverUrl);
+  if (metadata) return metadata;
+
+  // Strategy 3: POST to server, read WWW-Authenticate 401 header
   metadata = await discoverViaWwwAuthenticate(serverUrl);
   if (metadata) return metadata;
 
@@ -36,7 +41,24 @@ export async function discoverOAuthMetadata(serverUrl) {
 }
 
 // ---------------------------------------------------------------------------
-// Strategy 1: GET <origin>/.well-known/oauth-protected-resource
+// Strategy 1: GET <serverUrl>.well-known/oauth-authorization-server
+// ---------------------------------------------------------------------------
+
+async function discoverViaPathWellKnown(serverUrl) {
+  try {
+    // Normalize trailing slash: serverUrl/ + .well-known/oauth-authorization-server
+    const base = serverUrl.endsWith('/') ? serverUrl : serverUrl + '/';
+    const metadataUrl = `${base}.well-known/oauth-authorization-server`;
+    const authMetadata = await fetchJSON(metadataUrl);
+    if (!authMetadata) return null;
+    return buildMetadata(authMetadata);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Strategy 2: GET <origin>/.well-known/oauth-protected-resource → follow auth_server
 // ---------------------------------------------------------------------------
 
 async function discoverViaRootWellKnown(serverUrl) {
@@ -61,7 +83,7 @@ async function discoverViaRootWellKnown(serverUrl) {
 }
 
 // ---------------------------------------------------------------------------
-// Strategy 2: POST to server → read WWW-Authenticate → resource_metadata
+// Strategy 3: POST to server → read WWW-Authenticate → resource_metadata
 // ---------------------------------------------------------------------------
 
 async function discoverViaWwwAuthenticate(serverUrl) {
