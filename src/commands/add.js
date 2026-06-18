@@ -219,6 +219,8 @@ async function buildServerConfig(serverName, opts, existingConfig) {
         });
         process.stderr.write('OAuth flow completed.\n');
       }
+    } else {
+      config.oauth = false;
     }
 
     return config;

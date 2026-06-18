@@ -2,6 +2,7 @@ import * as readline from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 
 import { loadConfig } from '../config/loader.js';
+import { writeConfig } from '../config/writer.js';
 import { get as keychainGet } from '../keychain/index.js';
 import { refreshTokenIfNeeded } from '../oauth/refresh.js';
 import { discoverOAuthMetadata } from '../oauth/discovery.js';
@@ -43,33 +44,32 @@ export default async function authServer(args) {
 
   const config = await loadConfig();
 
-  // Collect OAuth servers
-  const oauthServers = Object.entries(config.servers)
-    .filter(([, s]) => s.type === 'sse' && s.oauth === true);
-
-  if (oauthServers.length === 0) {
-    console.log('No OAuth servers configured.');
-    process.exit(0);
-  }
-
   if (serverName) {
-    // Single server mode
+    // Single server mode — any SSE server is fair game
     const server = config.servers[serverName];
     if (!server) {
       console.error(`Server '${serverName}' not found.`);
       process.exit(1);
     }
-    if (!server.oauth) {
-      console.error(`Server '${serverName}' does not require OAuth.`);
+    if (server.type !== 'sse') {
+      console.error(`Server '${serverName}' is stdio — OAuth not applicable.`);
       process.exit(1);
     }
-    await authenticate(serverName, server, force);
+    await authenticate(config, serverName, server, force);
   } else {
-    // Bulk mode — authenticate all OAuth servers
-    console.log(`Authenticating ${oauthServers.length} OAuth server(s)...\n`);
-    for (const [name, server] of oauthServers) {
+    // Bulk mode — all SSE servers
+    const sseServers = Object.entries(config.servers)
+      .filter(([, s]) => s.type === 'sse');
+
+    if (sseServers.length === 0) {
+      console.log('No SSE servers configured.');
+      process.exit(0);
+    }
+
+    console.log(`Authenticating ${sseServers.length} SSE server(s)...\n`);
+    for (const [name, server] of sseServers) {
       console.log(`[${name}] ${server.url}`);
-      await authenticate(name, server, force);
+      await authenticate(config, name, server, force);
       console.log('');
     }
     console.log('Done.');
@@ -80,11 +80,12 @@ export default async function authServer(args) {
 
 /**
  * Authenticate a single server.
+ * @param {object} config - Mutable config object (updated in-place)
  * @param {string} serverName
  * @param {object} server
  * @param {boolean} force - Re-authenticate even with a valid token
  */
-async function authenticate(serverName, server, force) {
+async function authenticate(config, serverName, server, force) {
   // If not forced, check if we already have a valid token
   if (!force) {
     const secret = await keychainGet(serverName);
@@ -152,6 +153,12 @@ async function authenticate(serverName, server, force) {
   try {
     await runOAuthFlow(serverName, oauthMeta);
     console.log('  ✅ OAuth flow completed.');
+
+    // Persist oauth: true in config if not already set
+    if (!server.oauth) {
+      server.oauth = true;
+      await writeConfig(config);
+    }
   } catch (err) {
     console.error(`  ❌ OAuth flow failed: ${err.message}`);
   }
