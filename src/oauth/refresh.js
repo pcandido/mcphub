@@ -33,7 +33,7 @@ export async function refreshTokenIfNeeded(serverName) {
   const url = new URL(secret.token_url);
   const mod = url.protocol === 'https:' ? https : http;
 
-  const result = await new Promise((resolve, reject) => {
+  const result = await new Promise((resolve) => {
     const req = mod.request(
       {
         hostname: url.hostname,
@@ -54,20 +54,18 @@ export async function refreshTokenIfNeeded(serverName) {
           if (res.statusCode === 200) {
             resolve(data);
           } else {
-            reject(
-              new Error(
-                `Token refresh failed with status ${res.statusCode}: ${data}`
-              )
-            );
+            resolve(null);
           }
         });
       }
     );
 
-    req.on('error', reject);
+    req.on('error', () => resolve(null));
     req.write(body);
     req.end();
   });
+
+  if (!result) return null;
 
   let payload;
   try {
