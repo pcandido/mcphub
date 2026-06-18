@@ -39,8 +39,9 @@ function parseFlags(args) {
 export default async function authServer(args) {
   const flags = parseFlags(args);
   const positional = args.filter(a => !a.startsWith('--'));
-  const serverName = positional[0]; // optional
+  const serverName = positional[0];
   const force = !!flags.force;
+  const clientId = typeof flags['client-id'] === 'string' ? flags['client-id'] : null;
 
   const config = await loadConfig();
 
@@ -54,7 +55,7 @@ export default async function authServer(args) {
       console.error(`Server '${serverName}' is stdio — OAuth not applicable.`);
       process.exit(1);
     }
-    await authenticate(config, serverName, server, force);
+    await authenticate(config, serverName, server, { force, clientId });
   } else {
     const sseServers = Object.entries(config.servers)
       .filter(([, s]) => s.type === 'sse');
@@ -67,7 +68,7 @@ export default async function authServer(args) {
     console.log(`Authenticating ${sseServers.length} SSE server(s)...\n`);
     for (const [name, server] of sseServers) {
       console.log(`[${name}] ${server.url}`);
-      await authenticate(config, name, server, force);
+      await authenticate(config, name, server, { force, clientId });
       console.log('');
     }
     console.log('Done.');
@@ -78,9 +79,10 @@ export default async function authServer(args) {
 
 /**
  * Authenticate a single server.
- * Discovery + auto-registration only — no interactive prompts.
+ * Fully automatic: discovery → auto-register → OAuth PKCE.
+ * Use --client-id to skip dynamic registration.
  */
-async function authenticate(config, serverName, server, force) {
+async function authenticate(config, serverName, server, { force, clientId }) {
   // If not forced, check if we already have a valid token
   if (!force) {
     const secret = await keychainGet(serverName);
@@ -104,10 +106,10 @@ async function authenticate(config, serverName, server, force) {
     console.log('  --force: re-authenticating...');
   }
 
-  // 1. Discover OAuth metadata (authorization_url, token_url, registration_endpoint)
+  // 1. Discover OAuth metadata
   const discovered = await discoverOAuthMetadata(server.url);
   if (!discovered) {
-    console.error('  ❌ OAuth metadata discovery failed. Server does not expose .well-known or WWW-Authenticate metadata.');
+    console.error('  ❌ OAuth metadata discovery failed.');
     return;
   }
   console.log('  Metadata discovered.');
@@ -117,9 +119,8 @@ async function authenticate(config, serverName, server, force) {
     return;
   }
 
-  // 2. Dynamic client registration
-  let clientId = null;
-  if (discovered.registration_endpoint) {
+  // 2. Resolve client_id: flag > auto-register > error
+  if (!clientId && discovered.registration_endpoint) {
     try {
       const reg = await registerClient(discovered.registration_endpoint);
       if (reg) {
@@ -127,12 +128,16 @@ async function authenticate(config, serverName, server, force) {
         console.log(`  Client registered (${clientId}).`);
       }
     } catch (err) {
-      console.log(`  Dynamic registration failed: ${err.message}`);
+      console.log(`  Dynamic registration error: ${err.message}`);
     }
   }
 
   if (!clientId) {
-    console.error('  ❌ No registration endpoint in server metadata — cannot obtain client_id.');
+    if (discovered.registration_endpoint) {
+      console.error('  ❌ Dynamic client registration failed. Try: gtwmcp auth ' + serverName + ' --client-id=<id>');
+    } else {
+      console.error('  ❌ No registration endpoint found in server metadata. Provide a client_id with: gtwmcp auth ' + serverName + ' --client-id=<id>');
+    }
     return;
   }
 
@@ -162,6 +167,7 @@ function registerClient(registrationEndpoint) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
       client_name: 'gtwmcp',
+      redirect_uris: ['http://127.0.0.1/'],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
