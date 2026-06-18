@@ -1,6 +1,6 @@
 {
   "name": "@pcandido/mcphub",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "description": "A zero-dependency MCP gateway. Connect multiple AI harnesses to multiple MCP servers through a single, centrally-managed stdio interface. No overhead, no bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in config files.",
   "license": "MIT",
   "author": "Paulo Cândido",

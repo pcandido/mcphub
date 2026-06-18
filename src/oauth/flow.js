@@ -113,7 +113,7 @@ async function _runOAuthFlow(serverName, metadata) {
     throw new Error(errMsg);
   }
 
-  const { access_token, refresh_token, expires_in } = tokenResponse;
+  const { access_token, refresh_token, expires_in, refresh_token_expires_in } = tokenResponse;
 
   // Save to keychain
   const entry = {
@@ -125,6 +125,9 @@ async function _runOAuthFlow(serverName, metadata) {
     refresh_token: refresh_token || null,
     expires_at: expires_in
       ? new Date(Date.now() + expires_in * 1000).toISOString()
+      : null,
+    refresh_expires_at: refresh_token_expires_in
+      ? new Date(Date.now() + refresh_token_expires_in * 1000).toISOString()
       : null,
   };
 

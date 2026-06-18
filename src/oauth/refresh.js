@@ -78,8 +78,11 @@ export async function refreshTokenIfNeeded(serverName) {
   const updatedSecret = {
     ...secret,
     access_token: payload.access_token,
-    refresh_token: payload.refresh_token,
+    refresh_token: payload.refresh_token || secret.refresh_token,
     expires_at: new Date(Date.now() + payload.expires_in * 1000).toISOString(),
+    refresh_expires_at: payload.refresh_token_expires_in
+      ? new Date(Date.now() + payload.refresh_token_expires_in * 1000).toISOString()
+      : secret.refresh_expires_at,
   };
 
   try {
