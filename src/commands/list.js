@@ -19,17 +19,28 @@ export default async function list() {
       const secret = await keychainGet(name);
       if (!secret || !secret.access_token) {
         status = '🔐 needs auth';
-      } else if (!secret.refresh_token) {
-        status = '🔐 needs auth';
       } else {
         const now = Date.now();
-        const refreshExpiresAt = secret.refresh_expires_at
-          ? new Date(secret.refresh_expires_at).getTime()
-          : null;
-        if (refreshExpiresAt && now >= refreshExpiresAt) {
-          status = '🔐 needs auth';
+        // If we have a refresh token, base the status on its expiration
+        if (secret.refresh_token) {
+          const refreshExpiresAt = secret.refresh_expires_at
+            ? new Date(secret.refresh_expires_at).getTime()
+            : null;
+          if (refreshExpiresAt && now >= refreshExpiresAt) {
+            status = '🔐 needs auth';
+          } else {
+            status = '✅ authenticated';
+          }
         } else {
-          status = '✅ authenticated';
+          // No refresh token — fall back to access token expiration
+          const expiresAt = secret.expires_at
+            ? new Date(secret.expires_at).getTime()
+            : null;
+          if (expiresAt && now >= expiresAt) {
+            status = '🔐 needs auth';
+          } else {
+            status = '✅ authenticated';
+          }
         }
       }
     } else {
