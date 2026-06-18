@@ -1,10 +1,10 @@
 {
-  "name": "gmcp",
+  "name": "gtwmcp",
   "version": "0.1.0",
   "description": "MCP Gateway — aggregate multiple MCP servers behind a single stdio interface",
   "license": "MIT",
   "bin": {
-    "gmcp": "./bin/gmcp.js"
+    "gtwmcp": "./bin/gtwmcp.js"
   },
   "engines": {
     "node": ">=20"

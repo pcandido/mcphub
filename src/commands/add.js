@@ -9,7 +9,7 @@ import { runOAuthFlow } from '../oauth/flow.js';
 
 function showUsage() {
   process.stdout.write(
-    'Usage: gmcp add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
+    'Usage: gtwmcp add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
     '[--env <K=V,...>] [--url <url>] [--description <desc>] [--oauth] ' +
     '[--oauth-auth-url <url>] [--oauth-token-url <url>] [--oauth-client-id <id>] ' +
     '[--oauth-scopes <s1,s2>]\n'

@@ -3,11 +3,11 @@ import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
-const CONFIG_PATH = join(process.env.HOME, '.gmcp.json');
+const CONFIG_PATH = join(process.env.HOME, '.gtwmcp.json');
 
 export async function writeConfig(config) {
   const dir = dirname(CONFIG_PATH);
-  const tmpName = `.gmcp.json.${randomBytes(4).toString('hex')}.tmp`;
+  const tmpName = `.gtwmcp.json.${randomBytes(4).toString('hex')}.tmp`;
   const tmpPath = join(dir, tmpName);
 
   const json = JSON.stringify(config, null, 2) + '\n';

@@ -30,7 +30,7 @@ export async function startGateway() {
   const enabled = allServers.filter(([, s]) => s.enabled);
 
   if (enabled.length === 0) {
-    console.error("[gateway] No enabled servers found in config");
+    console.error("[gtwmcp] No enabled servers found in config");
   }
 
   // 3. Create upstream clients
@@ -59,7 +59,7 @@ export async function startGateway() {
             client.setAccessToken(token);
           } else {
             console.error(
-              `[gateway] No valid OAuth token for SSE server "${name}" — skipping`
+              `[gtwmcp] No valid OAuth token for SSE server "${name}" — skipping`
             );
             continue;
           }
@@ -69,7 +69,7 @@ export async function startGateway() {
       }
     } catch (err) {
       console.error(
-        `[gateway] Failed to create client for "${name}": ${err.message}`
+        `[gtwmcp] Failed to create client for "${name}": ${err.message}`
       );
       // Continue with remaining servers
     }
@@ -102,7 +102,7 @@ export async function startGateway() {
 
     // Notifications have a method but no id
     if (msg.method && msg.id === undefined) {
-      console.error(`[gateway] notification: ${msg.method}`);
+      console.error(`[gtwmcp] notification: ${msg.method}`);
       return;
     }
 
@@ -129,14 +129,14 @@ export async function startGateway() {
           cachedTools = toolList;
         } catch (err) {
           console.error(
-            `[gateway] initialize failed, returning empty tools: ${err.message}`
+            `[gtwmcp] initialize failed, returning empty tools: ${err.message}`
           );
         }
 
         const result = {
           protocolVersion: "2024-11-05",
           capabilities: { tools: {} },
-          serverInfo: { name: "gmcp", version: "0.1.0" },
+          serverInfo: { name: "gtwmcp", version: "0.1.0" },
           tools: toolList,
         };
 

@@ -109,25 +109,25 @@ export class ToolRegistry {
   // ---------------------------------------------------------------------------
 
   /**
-   * Parse GMCP_ALLOW_LIST env var: split by comma, trim whitespace.
+   * Parse GTWMCP_ALLOW_LIST env var: split by comma, trim whitespace.
    * Returns null if the env var is not set or empty.
    *
    * @returns {string[]|null}
    */
   #readAllowList() {
-    const raw = process.env.GMCP_ALLOW_LIST;
+    const raw = process.env.GTWMCP_ALLOW_LIST;
     if (!raw || raw.trim().length === 0) return null;
     return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
   }
 
   /**
-   * Parse GMCP_BLOCK_LIST env var: split by comma, trim whitespace.
+   * Parse GTWMCP_BLOCK_LIST env var: split by comma, trim whitespace.
    * Returns null if the env var is not set or empty.
    *
    * @returns {string[]|null}
    */
   #readBlockList() {
-    const raw = process.env.GMCP_BLOCK_LIST;
+    const raw = process.env.GTWMCP_BLOCK_LIST;
     if (!raw || raw.trim().length === 0) return null;
     return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
   }

@@ -36,7 +36,7 @@ export default async function get(args) {
       const expiresAt = new Date(secret.expires_at).getTime();
 
       if (now >= expiresAt) {
-        process.stdout.write('(OAuth: token expired, re-authenticate with gmcp add)\n');
+        process.stdout.write('(OAuth: token expired, re-authenticate with gtwmcp add)\n');
       } else {
         const d = new Date(expiresAt);
         process.stdout.write(`(OAuth: authenticated, expires ${d.toLocaleString()})\n`);

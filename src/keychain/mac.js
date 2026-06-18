@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
 
-const ACCOUNT = 'gmcp';
+const ACCOUNT = 'gtwmcp';
 const TIMEOUT = 5000;
 
 /**

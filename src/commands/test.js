@@ -8,7 +8,7 @@ export default async function testServer(args) {
   const serverName = args[0];
 
   if (!serverName) {
-    console.error('Usage: gmcp test <name>');
+    console.error('Usage: gtwmcp test <name>');
     process.exit(1);
   }
 
@@ -65,14 +65,14 @@ async function handleSse(serverName, server) {
     // Check if we even have a secret stored
     const secret = await keychainGet(serverName);
     if (!secret) {
-      console.error("OAuth required but no token found. Run 'gmcp add <name>' to authenticate.");
+      console.error("OAuth required but no token found. Run 'gtwmcp add <name>' to authenticate.");
       process.exit(1);
     }
 
     token = await refreshTokenIfNeeded(serverName);
     if (!token) {
       // Secret existed but refresh failed
-      console.error("Authentication failed. Run 'gmcp add <name>' to re-authenticate.");
+      console.error("Authentication failed. Run 'gtwmcp add <name>' to re-authenticate.");
       process.exit(1);
     }
 
@@ -109,7 +109,7 @@ async function handleSse(serverName, server) {
     printTools(tools);
   } catch (err) {
     if (err.message === 'OAuth token expired' || (err.statusCode && err.statusCode === 401)) {
-      console.error("Authentication failed. Run 'gmcp add <name>' to re-authenticate.");
+      console.error("Authentication failed. Run 'gtwmcp add <name>' to re-authenticate.");
     } else {
       console.error(err.message);
     }

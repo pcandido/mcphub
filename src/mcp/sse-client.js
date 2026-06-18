@@ -150,7 +150,7 @@ export class SseClient {
       protocolVersion: "2024-11-05",
       capabilities: {},
       clientInfo: {
-        name: "gmcp",
+        name: "gtwmcp",
         version: "0.1.0",
       },
     });
