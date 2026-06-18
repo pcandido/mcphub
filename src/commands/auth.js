@@ -42,6 +42,7 @@ export default async function authServer(args) {
   const serverName = positional[0];
   const force = !!flags.force;
   const clientId = typeof flags['client-id'] === 'string' ? flags['client-id'] : null;
+  const scopes = typeof flags['scopes'] === 'string' ? flags['scopes'] : null;
 
   const config = await loadConfig();
 
@@ -55,7 +56,7 @@ export default async function authServer(args) {
       console.error(`Server '${serverName}' is stdio — OAuth not applicable.`);
       process.exit(1);
     }
-    await authenticate(config, serverName, server, { force, clientId });
+    await authenticate(config, serverName, server, { force, clientId, scopes });
   } else {
     const sseServers = Object.entries(config.servers)
       .filter(([, s]) => s.type === 'sse');
@@ -68,7 +69,7 @@ export default async function authServer(args) {
     console.log(`Authenticating ${sseServers.length} SSE server(s)...\n`);
     for (const [name, server] of sseServers) {
       console.log(`[${name}] ${server.url}`);
-      await authenticate(config, name, server, { force, clientId });
+      await authenticate(config, name, server, { force, clientId, scopes });
       console.log('');
     }
     console.log('Done.');
@@ -81,7 +82,7 @@ export default async function authServer(args) {
  * Authenticate a single server.
  * Fully automatic: discovery → saved client_id or auto-register → OAuth PKCE.
  */
-async function authenticate(config, serverName, server, { force, clientId }) {
+async function authenticate(config, serverName, server, { force, clientId, scopes }) {
   // If not forced, check if we already have a valid token
   if (!force) {
     const secret = await keychainGet(serverName);
@@ -169,7 +170,7 @@ async function authenticate(config, serverName, server, { force, clientId }) {
       authorization_url: discovered.authorization_url,
       token_url: discovered.token_url,
       client_id: clientId,
-      scopes: discovered.scopes_supported || '',
+      scopes: scopes || '',
       port,
     });
     console.log('  ✅ Authenticated.');
