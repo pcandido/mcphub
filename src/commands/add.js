@@ -6,7 +6,7 @@ import { writeConfig } from '../config/writer.js';
 
 function showUsage() {
   process.stdout.write(
-    'Usage: gtwmcp add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
+    'Usage: mcphub add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
     '[--env <K,V,...>] [--url <url>] [--description <desc>] [--oauth]\n'
   );
 }
@@ -118,7 +118,7 @@ async function buildServerConfig(serverName, opts, existingConfig) {
     config.enabled = existingConfig?.enabled ?? true;
 
     if (opts.oauth) {
-      // --oauth just marks the server; actual auth flow is done by 'gtwmcp auth'
+      // --oauth just marks the server; actual auth flow is done by 'mcphub auth'
       config.oauth = true;
     } else {
       config.oauth = false;

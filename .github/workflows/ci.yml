@@ -28,7 +28,7 @@ jobs:
 
       - name: Verify shebang
         run: |
-          head -1 bin/gtwmcp.js | grep -q "node"
+          head -1 bin/mcphub.js | grep -q "node"
           echo "✅ Shebang OK"
 
   build:
@@ -47,6 +47,6 @@ jobs:
           node -e "
             const pkg = JSON.parse(require('fs').readFileSync('package.json','utf-8'));
             console.log('Package:', pkg.name, pkg.version);
-            if (!pkg.bin?.gtwmcp) throw new Error('Missing bin entry');
+            if (!pkg.bin?.mcphub) throw new Error('Missing bin entry');
             console.log('✅ package.json valid');
           "

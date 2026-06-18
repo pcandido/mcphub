@@ -38,7 +38,7 @@ export async function set(serverName, secret) {
 
   await execFileAsync(
     'secret-tool',
-    ['store', '--label=gtwmcp', 'server', serverName],
+    ['store', '--label=mcphub', 'server', serverName],
     { timeout: TIMEOUT, input: json }
   );
 }

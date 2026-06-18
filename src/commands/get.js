@@ -8,7 +8,7 @@ export default async function getServer(args) {
   const serverName = args[0];
 
   if (!serverName) {
-    console.error('Usage: gtwmcp get <name>');
+    console.error('Usage: mcphub get <name>');
     process.exit(1);
   }
 
@@ -64,13 +64,13 @@ async function handleSse(serverName, server) {
   if (server.oauth) {
     const secret = await keychainGet(serverName);
     if (!secret) {
-      console.error('Not authenticated. Run: gtwmcp auth ' + serverName);
+      console.error('Not authenticated. Run: mcphub auth ' + serverName);
       process.exit(1);
     }
 
     token = await refreshTokenIfNeeded(serverName);
     if (!token) {
-      console.error('Token expired and refresh failed. Run: gtwmcp auth ' + serverName);
+      console.error('Token expired and refresh failed. Run: mcphub auth ' + serverName);
       process.exit(1);
     }
   }
@@ -98,7 +98,7 @@ async function handleSse(serverName, server) {
     printTools(tools);
   } catch (err) {
     if (err.message === 'OAuth token expired' || (err.statusCode && err.statusCode === 401)) {
-      console.error('Token expired during request. Run: gtwmcp auth ' + serverName);
+      console.error('Token expired during request. Run: mcphub auth ' + serverName);
     } else {
       console.error(err.message);
     }

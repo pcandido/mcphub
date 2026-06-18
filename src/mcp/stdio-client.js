@@ -98,7 +98,7 @@ export class StdioClient {
     const initResult = await this.request("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
-      clientInfo: { name: "gtwmcp", version: "0.1.0" },
+      clientInfo: { name: "mcphub", version: "0.1.0" },
     });
 
     this.#started = true;

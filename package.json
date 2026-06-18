@@ -1,12 +1,12 @@
 {
-  "name": "gtwmcp",
-  "version": "0.4.0",
+  "name": "@pcandido/mcphub",
+  "version": "0.3.12",
   "description": "A zero-dependency MCP gateway. Connect multiple AI harnesses to multiple MCP servers through a single, centrally-managed stdio interface. No overhead, no bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in config files.",
   "license": "MIT",
   "author": "Paulo Cândido",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/pcandido/gtwmcp.git"
+    "url": "git+https://github.com/pcandido/mcphub.git"
   },
   "packageManager": "npm@11.6.2",
   "keywords": [
@@ -19,7 +19,7 @@
     "oauth"
   ],
   "bin": {
-    "gtwmcp": "bin/gtwmcp.js"
+    "mcphub": "bin/mcphub.js"
   },
   "files": [
     "bin",
@@ -33,7 +33,7 @@
   },
   "type": "module",
   "scripts": {
-    "check": "node --check bin/gtwmcp.js && node --check src/cli.js && for f in src/commands/*.js src/config/*.js src/keychain/*.js src/mcp/*.js src/oauth/*.js src/serve/*.js; do node --check \"$f\" || exit 1; done",
+    "check": "node --check bin/mcphub.js && node --check src/cli.js && for f in src/commands/*.js src/config/*.js src/keychain/*.js src/mcp/*.js src/oauth/*.js src/serve/*.js; do node --check \"$f\" || exit 1; done",
     "test": "node --test test/*.test.js",
     "test:ci": "node --test --test-reporter spec test/*.test.js",
     "prepublishOnly": "npm run check && npm test"

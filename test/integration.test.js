@@ -10,23 +10,23 @@ import { tmpdir } from "node:os";
 import { randomBytes } from "node:crypto";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const BIN = join(__dirname, "..", "bin", "gtwmcp.js");
+const BIN = join(__dirname, "..", "bin", "mcphub.js");
 const MOCK_SERVER = join(__dirname, "fixtures", "mock-mcp-server.js");
 
 const origHome = process.env.HOME;
 
 async function setupConfig(servers) {
-  const testDir = join(tmpdir(), `gtwmcp-int-${randomBytes(4).toString("hex")}`);
+  const testDir = join(tmpdir(), `mcphub-int-${randomBytes(4).toString("hex")}`);
   await mkdir(testDir, { recursive: true });
   process.env.HOME = testDir;
   const config = { version: 1, servers };
-  await writeFile(join(testDir, ".gtwmcp.json"), JSON.stringify(config), "utf-8");
+  await writeFile(join(testDir, ".mcphub.json"), JSON.stringify(config), "utf-8");
   return testDir;
 }
 
 async function cleanup(dir) {
   process.env.HOME = origHome;
-  try { await unlink(join(dir, ".gtwmcp.json")); } catch {}
+  try { await unlink(join(dir, ".mcphub.json")); } catch {}
 }
 
 // Send a JSON-RPC request and get the matching response
@@ -79,7 +79,7 @@ describe("Gateway Integration", () => {
       clientInfo: { name: "test", version: "1.0" },
     });
 
-    assert.equal(initResponse.result.serverInfo.name, "gtwmcp");
+    assert.equal(initResponse.result.serverInfo.name, "mcphub");
     assert.equal(initResponse.result.protocolVersion, "2024-11-05");
 
     const toolNames = initResponse.result.tools.map((t) => t.name).sort();
@@ -184,7 +184,7 @@ describe("CLI Integration", () => {
     });
   }
 
-  it("gtwmcp list shows servers", async () => {
+  it("mcphub list shows servers", async () => {
     testDir = await setupConfig({
       demo: {
         type: "stdio",
@@ -208,7 +208,7 @@ describe("CLI Integration", () => {
     assert.match(stdout, /❌.*disabled/);
   });
 
-  it("gtwmcp get lists tools from a server", async () => {
+  it("mcphub get lists tools from a server", async () => {
     testDir = await setupConfig({
       mock: {
         type: "stdio",
@@ -228,7 +228,7 @@ describe("CLI Integration", () => {
     assert.match(stdout, /3 tools available/);
   });
 
-  it("gtwmcp enable / disable toggles server", async () => {
+  it("mcphub enable / disable toggles server", async () => {
     testDir = await setupConfig({
       demo: { type: "stdio", enabled: false, command: "echo" },
     });
@@ -238,7 +238,7 @@ describe("CLI Integration", () => {
 
     // Re-read config to verify
     const { readFile } = await import("node:fs/promises");
-    const content = await readFile(join(testDir, ".gtwmcp.json"), "utf-8");
+    const content = await readFile(join(testDir, ".mcphub.json"), "utf-8");
     const config = JSON.parse(content);
     assert.equal(config.servers.demo.enabled, true);
   });
