@@ -3,7 +3,7 @@ import http from 'node:http';
 
 import { loadConfig } from '../config/loader.js';
 import { writeConfig } from '../config/writer.js';
-import { get as keychainGet } from '../keychain/index.js';
+import { get as keychainGet, set as keychainSet } from '../keychain/index.js';
 import { refreshTokenIfNeeded } from '../oauth/refresh.js';
 import { discoverOAuthMetadata } from '../oauth/discovery.js';
 import { runOAuthFlow } from '../oauth/flow.js';
@@ -79,8 +79,7 @@ export default async function authServer(args) {
 
 /**
  * Authenticate a single server.
- * Fully automatic: discovery → auto-register → OAuth PKCE.
- * Use --client-id to skip dynamic registration.
+ * Fully automatic: discovery → saved client_id or auto-register → OAuth PKCE.
  */
 async function authenticate(config, serverName, server, { force, clientId }) {
   // If not forced, check if we already have a valid token
@@ -99,11 +98,23 @@ async function authenticate(config, serverName, server, { force, clientId }) {
         return;
       }
       console.log('  ⚠️  Token refresh failed — starting OAuth flow...');
+
+      // Reuse saved client_id if available
+      if (!clientId && secret.client_id) {
+        clientId = secret.client_id;
+        console.log(`  Using saved client_id (${clientId}).`);
+      }
     } else {
       console.log('  No token found — starting OAuth flow...');
     }
   } else {
     console.log('  --force: re-authenticating...');
+    // Reuse saved client_id on force too
+    const secret = await keychainGet(serverName);
+    if (!clientId && secret?.client_id) {
+      clientId = secret.client_id;
+      console.log(`  Using saved client_id (${clientId}).`);
+    }
   }
 
   // 1. Discover OAuth metadata
@@ -119,13 +130,20 @@ async function authenticate(config, serverName, server, { force, clientId }) {
     return;
   }
 
-  // 2. Resolve client_id: flag > auto-register > error
+  // 2. Resolve client_id: flag > saved > auto-register > error
   if (!clientId && discovered.registration_endpoint) {
     try {
       const reg = await registerClient(discovered.registration_endpoint);
       if (reg) {
         clientId = reg.client_id;
         console.log(`  Client registered (${clientId}).`);
+        // Save client_id immediately so we don't re-register
+        const existing = await keychainGet(serverName) || {};
+        await keychainSet(serverName, {
+          authorization_url: discovered.authorization_url,
+          token_url: discovered.token_url,
+          client_id: clientId,
+        });
       }
     } catch (err) {
       console.log(`  Dynamic registration error: ${err.message}`);
@@ -136,7 +154,7 @@ async function authenticate(config, serverName, server, { force, clientId }) {
     if (discovered.registration_endpoint) {
       console.error('  ❌ Dynamic client registration failed. Try: gtwmcp auth ' + serverName + ' --client-id=<id>');
     } else {
-      console.error('  ❌ No registration endpoint found in server metadata. Provide a client_id with: gtwmcp auth ' + serverName + ' --client-id=<id>');
+      console.error('  ❌ No registration endpoint found. Provide client_id with: gtwmcp auth ' + serverName + ' --client-id=<id>');
     }
     return;
   }
@@ -167,7 +185,7 @@ function registerClient(registrationEndpoint) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
       client_name: 'gtwmcp',
-      redirect_uris: ['http://127.0.0.1/'],
+      redirect_uris: ['http://127.0.0.1/callback', 'http://localhost/callback'],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
@@ -183,6 +201,7 @@ function registerClient(registrationEndpoint) {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
+          'User-Agent': 'gtwmcp/0.3.1',
         },
         timeout: 10000,
       },
