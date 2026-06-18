@@ -23,6 +23,18 @@ import { discoverOAuthMetadata } from './discovery.js';
  * @returns {Promise<Object>} The saved keychain entry
  */
 export async function runOAuthFlow(serverName, metadata) {
+  return _runOAuthFlow(serverName, metadata);
+}
+
+/**
+ * Pick a free port in a high range (10240-10249).
+ * @returns {Promise<number>}
+ */
+export async function pickFreePort() {
+  return _pickFreePort();
+}
+
+async function _runOAuthFlow(serverName, metadata) {
   // Step 1: Resolve metadata (prompt if not provided)
   let authorizationUrl, tokenUrl, clientId, scopes;
 
@@ -59,8 +71,9 @@ export async function runOAuthFlow(serverName, metadata) {
   const codeChallenge = generateCodeChallenge(codeVerifier);
   const state = generateState();
 
-  // Step 3: Start local HTTP server
-  const { port, authCodePromise } = startCallbackServer(state);
+  // Step 3: Start local HTTP server on a fixed high port
+  const port = metadata?.port || await _pickFreePort();
+  const { authCodePromise } = await startCallbackServer(state, port);
 
   const redirectUri = `http://127.0.0.1:${port}/callback`;
 
@@ -128,13 +141,14 @@ export async function runOAuthFlow(serverName, metadata) {
 }
 
 /**
- * Start a local HTTP callback server on 127.0.0.1.
- * Returns the bound port and a promise that resolves with the authorization code.
+ * Start a local HTTP callback server on 127.0.0.1 at the given port.
+ * Returns a promise that resolves with the authorization code.
  *
  * @param {string} expectedState
- * @returns {{ port: number, authCodePromise: Promise<string> }}
+ * @param {number} port
+ * @returns {Promise<{ authCodePromise: Promise<string> }>}
  */
-function startCallbackServer(expectedState) {
+function startCallbackServer(expectedState, port) {
   return new Promise((resolveStart, rejectStart) => {
     const server = http.createServer();
 
@@ -187,15 +201,38 @@ function startCallbackServer(expectedState) {
       });
     });
 
-    // Bind to 127.0.0.1, random port (0)
-    server.listen(0, '127.0.0.1', () => {
-      const addr = server.address();
-      resolveStart({ port: addr.port, authCodePromise });
+    server.listen(port, '127.0.0.1', () => {
+      resolveStart({ authCodePromise });
     });
 
     server.on('error', (err) => {
       rejectStart(err);
     });
+  });
+}
+
+/**
+ * Pick a free port in a high range (10240-10249).
+ * Returns the first available port, or throws if all are busy.
+ */
+async function _pickFreePort() {
+  for (let port = 10240; port <= 10249; port++) {
+    const free = await probePort(port);
+    if (free) return port;
+  }
+  throw new Error('No free callback port in range 10240-10249');
+}
+
+/**
+ * Probe whether a port is available on 127.0.0.1.
+ */
+function probePort(port) {
+  return new Promise((resolve) => {
+    const server = http.createServer();
+    server.listen(port, '127.0.0.1', () => {
+      server.close(() => resolve(true));
+    });
+    server.on('error', () => resolve(false));
   });
 }
 

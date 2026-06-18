@@ -6,7 +6,7 @@ import { writeConfig } from '../config/writer.js';
 import { get as keychainGet, set as keychainSet } from '../keychain/index.js';
 import { refreshTokenIfNeeded } from '../oauth/refresh.js';
 import { discoverOAuthMetadata } from '../oauth/discovery.js';
-import { runOAuthFlow } from '../oauth/flow.js';
+import { runOAuthFlow, pickFreePort } from '../oauth/flow.js';
 
 function parseFlags(args) {
   const flags = {};
@@ -130,10 +130,14 @@ async function authenticate(config, serverName, server, { force, clientId }) {
     return;
   }
 
-  // 2. Resolve client_id: flag > saved > auto-register > error
+  // 2. Probe a callback port (same port used in DCR and OAuth flow)
+  const port = await pickFreePort();
+  const redirectUri = `http://127.0.0.1:${port}/callback`;
+
+  // 3. Resolve client_id: flag > saved > auto-register > error
   if (!clientId && discovered.registration_endpoint) {
     try {
-      const reg = await registerClient(discovered.registration_endpoint);
+      const reg = await registerClient(discovered.registration_endpoint, redirectUri);
       if (reg) {
         clientId = reg.client_id;
         console.log(`  Client registered (${clientId}).`);
@@ -159,13 +163,14 @@ async function authenticate(config, serverName, server, { force, clientId }) {
     return;
   }
 
-  // 3. Run OAuth flow
+  // 4. Run OAuth flow
   try {
     await runOAuthFlow(serverName, {
       authorization_url: discovered.authorization_url,
       token_url: discovered.token_url,
       client_id: clientId,
       scopes: discovered.scopes_supported || '',
+      port,
     });
     console.log('  ✅ Authenticated.');
 
@@ -181,11 +186,11 @@ async function authenticate(config, serverName, server, { force, clientId }) {
 /**
  * Dynamic client registration (RFC 7591).
  */
-function registerClient(registrationEndpoint) {
+function registerClient(registrationEndpoint, redirectUri) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
       client_name: 'gtwmcp',
-      redirect_uris: ['http://127.0.0.1/callback', 'http://localhost/callback'],
+      redirect_uris: [redirectUri],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
       token_endpoint_auth_method: 'none',
