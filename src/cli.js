@@ -1,14 +1,14 @@
-const HELP = `gtwmcp <command> [args]
+const HELP = `mcphub <command> [args]
 
 Commands:
-  gtwmcp add    <name>    Add or update an MCP server
-  gtwmcp remove <name>    Remove an MCP server
-  gtwmcp get    <name>    List tools and descriptions from a server
-  gtwmcp list             List all servers with status
-  gtwmcp auth   [name]    Authenticate OAuth servers (--force to re-auth)
-  gtwmcp enable <name>    Enable a server
-  gtwmcp disable <name>   Disable a server
-  gtwmcp serve            Start the MCP gateway in stdio mode
+  mcphub add    <name>    Add or update an MCP server
+  mcphub remove <name>    Remove an MCP server
+  mcphub get    <name>    List tools and descriptions from a server
+  mcphub list             List all servers with status
+  mcphub auth   [name]    Authenticate OAuth servers (--force to re-auth)
+  mcphub enable <name>    Enable a server
+  mcphub disable <name>   Disable a server
+  mcphub serve            Start the MCP gateway in stdio mode
 `;
 
 function showHelp() {

@@ -113,12 +113,12 @@ describe("ToolRegistry", () => {
       upstreams = [
         { name: "srv", client: new FakeClient("srv", SAMPLE_TOOLS) },
       ];
-      delete process.env.GTWMCP_ALLOW_LIST;
-      delete process.env.GTWMCP_BLOCK_LIST;
+      delete process.env.MCPHUB_ALLOW_LIST;
+      delete process.env.MCPHUB_BLOCK_LIST;
     });
     afterEach(() => {
-      delete process.env.GTWMCP_ALLOW_LIST;
-      delete process.env.GTWMCP_BLOCK_LIST;
+      delete process.env.MCPHUB_ALLOW_LIST;
+      delete process.env.MCPHUB_BLOCK_LIST;
     });
 
     it("passes all tools when no filters are set", async () => {
@@ -128,7 +128,7 @@ describe("ToolRegistry", () => {
     });
 
     it("filters by allow list", async () => {
-      process.env.GTWMCP_ALLOW_LIST = "srv__search,srv__read";
+      process.env.MCPHUB_ALLOW_LIST = "srv__search,srv__read";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       const names = result.tools.map((t) => t.name);
@@ -136,7 +136,7 @@ describe("ToolRegistry", () => {
     });
 
     it("filters by block list", async () => {
-      process.env.GTWMCP_BLOCK_LIST = "srv__create";
+      process.env.MCPHUB_BLOCK_LIST = "srv__create";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       const names = result.tools.map((t) => t.name);
@@ -144,8 +144,8 @@ describe("ToolRegistry", () => {
     });
 
     it("allow then block when both are set", async () => {
-      process.env.GTWMCP_ALLOW_LIST = "srv__search,srv__create";
-      process.env.GTWMCP_BLOCK_LIST = "srv__create";
+      process.env.MCPHUB_ALLOW_LIST = "srv__search,srv__create";
+      process.env.MCPHUB_BLOCK_LIST = "srv__create";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       const names = result.tools.map((t) => t.name);
@@ -153,14 +153,14 @@ describe("ToolRegistry", () => {
     });
 
     it("supports wildcard allow", async () => {
-      process.env.GTWMCP_ALLOW_LIST = "srv__*";
+      process.env.MCPHUB_ALLOW_LIST = "srv__*";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       assert.equal(result.tools.length, 3);
     });
 
     it("supports wildcard block", async () => {
-      process.env.GTWMCP_BLOCK_LIST = "srv__crea*";
+      process.env.MCPHUB_BLOCK_LIST = "srv__crea*";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       const names = result.tools.map((t) => t.name).sort();
@@ -168,14 +168,14 @@ describe("ToolRegistry", () => {
     });
 
     it("trims whitespace from filter patterns", async () => {
-      process.env.GTWMCP_ALLOW_LIST = " srv__search , srv__read ";
+      process.env.MCPHUB_ALLOW_LIST = " srv__search , srv__read ";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       assert.equal(result.tools.length, 2);
     });
 
     it("empty allow list env var is treated as not set", async () => {
-      process.env.GTWMCP_ALLOW_LIST = "  ";
+      process.env.MCPHUB_ALLOW_LIST = "  ";
       const registry = new ToolRegistry(upstreams);
       const result = await registry.initialize();
       assert.equal(result.tools.length, 3);

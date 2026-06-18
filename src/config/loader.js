@@ -2,7 +2,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 function configPath() {
-  return join(process.env.HOME, '.gtwmcp.json');
+  return join(process.env.HOME, '.mcphub.json');
 }
 
 const VALID_TYPES = new Set(['stdio', 'sse']);
@@ -84,7 +84,7 @@ export async function loadConfig() {
   try {
     config = JSON.parse(raw);
   } catch (err) {
-    throw new Error(`Failed to parse ~/.gtwmcp.json: ${err.message}`);
+    throw new Error(`Failed to parse ~/.mcphub.json: ${err.message}`);
   }
 
   if (typeof config.version !== 'number') {

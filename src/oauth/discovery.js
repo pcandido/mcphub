@@ -96,7 +96,7 @@ async function discoverViaWwwAuthenticate(serverUrl) {
       params: {
         protocolVersion: '2024-11-05',
         capabilities: {},
-        clientInfo: { name: 'gtwmcp', version: '0.1.0' },
+        clientInfo: { name: 'mcphub', version: '0.1.0' },
       },
     }));
 

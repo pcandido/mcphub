@@ -9,8 +9,8 @@ import { randomBytes } from "node:crypto";
 const origHome = process.env.HOME;
 
 function tmpConfigPath() {
-  const dir = join(tmpdir(), `gtwmcp-test-${randomBytes(4).toString("hex")}`);
-  return { dir, path: join(dir, ".gtwmcp.json") };
+  const dir = join(tmpdir(), `mcphub-test-${randomBytes(4).toString("hex")}`);
+  return { dir, path: join(dir, ".mcphub.json") };
 }
 
 async function setupConfig(content) {
@@ -25,8 +25,8 @@ async function setupConfig(content) {
 
 async function cleanup(dir) {
   process.env.HOME = origHome;
-  try { await unlink(join(dir, ".gtwmcp.json")); } catch {}
-  try { await unlink(join(dir, ".gtwmcp.json.tmp")); } catch {}
+  try { await unlink(join(dir, ".mcphub.json")); } catch {}
+  try { await unlink(join(dir, ".mcphub.json.tmp")); } catch {}
   // No need to rmdir — tmpdir cleanup is fine
 }
 

@@ -157,9 +157,9 @@ async function authenticate(config, serverName, server, { force, clientId, scope
 
   if (!clientId) {
     if (discovered.registration_endpoint) {
-      console.error('  ❌ Dynamic client registration failed. Try: gtwmcp auth ' + serverName + ' --client-id=<id>');
+      console.error('  ❌ Dynamic client registration failed. Try: mcphub auth ' + serverName + ' --client-id=<id>');
     } else {
-      console.error('  ❌ No registration endpoint found. Provide client_id with: gtwmcp auth ' + serverName + ' --client-id=<id>');
+      console.error('  ❌ No registration endpoint found. Provide client_id with: mcphub auth ' + serverName + ' --client-id=<id>');
     }
     return;
   }
@@ -190,7 +190,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
 function registerClient(registrationEndpoint, redirectUri) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
-      client_name: 'gtwmcp',
+      client_name: 'mcphub',
       redirect_uris: [redirectUri],
       grant_types: ['authorization_code', 'refresh_token'],
       response_types: ['code'],
@@ -207,7 +207,7 @@ function registerClient(registrationEndpoint, redirectUri) {
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json',
-          'User-Agent': 'gtwmcp/0.3.1',
+          'User-Agent': 'mcphub/0.3.1',
         },
         timeout: 10000,
       },
