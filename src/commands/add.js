@@ -3,16 +3,11 @@ import { stdin as input, stdout as output } from 'node:process';
 
 import { loadConfig } from '../config/loader.js';
 import { writeConfig } from '../config/writer.js';
-import { get as keychainGet, set as keychainSet, del as keychainDel } from '../keychain/index.js';
-import { discoverOAuthMetadata } from '../oauth/discovery.js';
-import { runOAuthFlow } from '../oauth/flow.js';
 
 function showUsage() {
   process.stdout.write(
     'Usage: gtwmcp add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
-    '[--env <K=V,...>] [--url <url>] [--description <desc>] [--oauth] ' +
-    '[--oauth-auth-url <url>] [--oauth-token-url <url>] [--oauth-client-id <id>] ' +
-    '[--oauth-scopes <s1,s2>]\n'
+    '[--env <K,V,...>] [--url <url>] [--description <desc>] [--oauth]\n'
   );
 }
 
@@ -102,29 +97,6 @@ async function promptSse(rl) {
 }
 
 /**
- * Prompt for OAuth metadata values that haven't been discovered/provided yet.
- */
-async function promptOAuthMissing(rl, metadata) {
-  const result = { ...metadata };
-
-  if (!result.authorization_url) {
-    result.authorization_url = (await rl.question('  Authorization URL: ')).trim();
-  }
-  if (!result.token_url) {
-    result.token_url = (await rl.question('  Token URL: ')).trim();
-  }
-  if (!result.client_id) {
-    result.client_id = (await rl.question('  Client ID: ')).trim();
-  }
-  if (!result.scopes) {
-    const scopesRaw = (await rl.question('  Scopes (comma-separated): ')).trim();
-    result.scopes = scopesRaw || '';
-  }
-
-  return result;
-}
-
-/**
  * Build the server config object and optionally handle OAuth.
  */
 async function buildServerConfig(serverName, opts, existingConfig) {
@@ -146,85 +118,8 @@ async function buildServerConfig(serverName, opts, existingConfig) {
     config.enabled = existingConfig?.enabled ?? true;
 
     if (opts.oauth) {
+      // --oauth just marks the server; actual auth flow is done by 'gtwmcp auth'
       config.oauth = true;
-
-      // Gather OAuth metadata: flags > discovery > interactive prompt
-      let oauthMeta = {
-        authorization_url: opts.oauthAuthUrl || undefined,
-        token_url: opts.oauthTokenUrl || undefined,
-        client_id: opts.oauthClientId || undefined,
-        scopes: opts.oauthScopes || undefined,
-      };
-
-      // If auth/token URLs not provided, try discovery
-      if (!oauthMeta.authorization_url || !oauthMeta.token_url) {
-        process.stderr.write('Discovering OAuth metadata...\n');
-        const discovered = await discoverOAuthMetadata(opts.url);
-        if (discovered) {
-          process.stderr.write('  Found OAuth metadata via .well-known discovery.\n');
-          oauthMeta.authorization_url = oauthMeta.authorization_url || discovered.authorization_url;
-          oauthMeta.token_url = oauthMeta.token_url || discovered.token_url;
-          if (!oauthMeta.scopes && discovered.scopes_supported) {
-            process.stderr.write(
-              `  Server supports scopes: ${discovered.scopes_supported.join(', ')}\n`
-            );
-          }
-        } else {
-          process.stderr.write('  No OAuth metadata discovered.\n');
-        }
-      }
-
-      // Determine if we need to prompt
-      const isNonInteractive = opts.type !== undefined; // has --type means non-interactive
-      if (!oauthMeta.authorization_url || !oauthMeta.token_url || !oauthMeta.client_id) {
-        if (isNonInteractive) {
-          // Non-interactive with --oauth but no metadata: just mark OAuth, defer flow to 'gtwmcp auth'
-          process.stderr.write('  OAuth metadata not fully provided — set oauth:true, run "gtwmcp auth" later.\n');
-          config.oauth = true;
-          return config;
-        }
-        // Interactive mode: prompt
-        const rl = readline.createInterface({ input, output });
-        try {
-          process.stdout.write('OAuth details required:\n');
-          oauthMeta = await promptOAuthMissing(rl, oauthMeta);
-        } finally {
-          rl.close();
-        }
-      }
-
-      if (!oauthMeta.authorization_url || !oauthMeta.token_url || !oauthMeta.client_id) {
-        throw new Error('Authorization URL, Token URL, and Client ID are required for OAuth');
-      }
-
-      // Check if we should re-auth
-      let doAuth = true;
-      if (existingConfig?.oauth === true) {
-        // Server already had OAuth — check keychain
-        const existingKeychain = await keychainGet(serverName);
-        if (existingKeychain) {
-          const rl = readline.createInterface({ input, output });
-          try {
-            const reAuth = (await rl.question(
-              'Server already has OAuth credentials. Re-authenticate? [y/N]: '
-            )).trim().toLowerCase();
-            doAuth = reAuth === 'y' || reAuth === 'yes';
-          } finally {
-            rl.close();
-          }
-        }
-      }
-
-      if (doAuth) {
-        process.stderr.write('Starting OAuth flow...\n');
-        await runOAuthFlow(serverName, {
-          authorization_url: oauthMeta.authorization_url,
-          token_url: oauthMeta.token_url,
-          client_id: oauthMeta.client_id,
-          scopes: oauthMeta.scopes,
-        });
-        process.stderr.write('OAuth flow completed.\n');
-      }
     } else {
       config.oauth = false;
     }
@@ -355,19 +250,6 @@ export default async function addServer(args) {
 
       if (flags.oauth) {
         opts.oauth = true;
-
-        if (flags['oauth-auth-url']) {
-          opts.oauthAuthUrl = typeof flags['oauth-auth-url'] === 'string' ? flags['oauth-auth-url'] : '';
-        }
-        if (flags['oauth-token-url']) {
-          opts.oauthTokenUrl = typeof flags['oauth-token-url'] === 'string' ? flags['oauth-token-url'] : '';
-        }
-        if (flags['oauth-client-id']) {
-          opts.oauthClientId = typeof flags['oauth-client-id'] === 'string' ? flags['oauth-client-id'] : '';
-        }
-        if (flags['oauth-scopes']) {
-          opts.oauthScopes = typeof flags['oauth-scopes'] === 'string' ? flags['oauth-scopes'] : '';
-        }
       }
     }
 

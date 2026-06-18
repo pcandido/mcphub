@@ -1,5 +1,5 @@
-import * as readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
+import https from 'node:https';
+import http from 'node:http';
 
 import { loadConfig } from '../config/loader.js';
 import { writeConfig } from '../config/writer.js';
@@ -45,7 +45,6 @@ export default async function authServer(args) {
   const config = await loadConfig();
 
   if (serverName) {
-    // Single server mode — any SSE server is fair game
     const server = config.servers[serverName];
     if (!server) {
       console.error(`Server '${serverName}' not found.`);
@@ -57,7 +56,6 @@ export default async function authServer(args) {
     }
     await authenticate(config, serverName, server, force);
   } else {
-    // Bulk mode — all SSE servers
     const sseServers = Object.entries(config.servers)
       .filter(([, s]) => s.type === 'sse');
 
@@ -80,10 +78,7 @@ export default async function authServer(args) {
 
 /**
  * Authenticate a single server.
- * @param {object} config - Mutable config object (updated in-place)
- * @param {string} serverName
- * @param {object} server
- * @param {boolean} force - Re-authenticate even with a valid token
+ * Discovery + auto-registration only — no interactive prompts.
  */
 async function authenticate(config, serverName, server, force) {
   // If not forced, check if we already have a valid token
@@ -109,52 +104,48 @@ async function authenticate(config, serverName, server, force) {
     console.log('  --force: re-authenticating...');
   }
 
-  // Discover OAuth metadata
-  let oauthMeta = {};
-  try {
-    const discovered = await discoverOAuthMetadata(server.url);
-    if (discovered) {
-      oauthMeta = discovered;
-      console.log('  OAuth metadata discovered via .well-known.');
-    }
-  } catch {
-    // Discovery is best-effort
+  // 1. Discover OAuth metadata (authorization_url, token_url, registration_endpoint)
+  const discovered = await discoverOAuthMetadata(server.url);
+  if (!discovered) {
+    console.error('  ❌ OAuth metadata discovery failed. Server does not expose .well-known or WWW-Authenticate metadata.');
+    return;
   }
+  console.log('  Metadata discovered.');
 
-  // Prompt for missing fields
-  if (!oauthMeta.authorization_url || !oauthMeta.token_url || !oauthMeta.client_id) {
-    const rl = readline.createInterface({ input, output });
-    try {
-      console.log('  OAuth details required:');
-      if (!oauthMeta.authorization_url) {
-        oauthMeta.authorization_url = (await rl.question('    Authorization URL: ')).trim();
-      }
-      if (!oauthMeta.token_url) {
-        oauthMeta.token_url = (await rl.question('    Token URL: ')).trim();
-      }
-      if (!oauthMeta.client_id) {
-        oauthMeta.client_id = (await rl.question('    Client ID: ')).trim();
-      }
-      if (!oauthMeta.scopes) {
-        const scopesRaw = (await rl.question('    Scopes (comma-separated): ')).trim();
-        oauthMeta.scopes = scopesRaw || '';
-      }
-    } finally {
-      rl.close();
-    }
-  }
-
-  if (!oauthMeta.authorization_url || !oauthMeta.token_url || !oauthMeta.client_id) {
-    console.error('  ❌ Authorization URL, Token URL, and Client ID are required for OAuth.');
+  if (!discovered.authorization_url || !discovered.token_url) {
+    console.error('  ❌ Authorization or token endpoint not found in server metadata.');
     return;
   }
 
-  // Run OAuth flow
-  try {
-    await runOAuthFlow(serverName, oauthMeta);
-    console.log('  ✅ OAuth flow completed.');
+  // 2. Dynamic client registration
+  let clientId = null;
+  if (discovered.registration_endpoint) {
+    try {
+      const reg = await registerClient(discovered.registration_endpoint);
+      if (reg) {
+        clientId = reg.client_id;
+        console.log(`  Client registered (${clientId}).`);
+      }
+    } catch (err) {
+      console.log(`  Dynamic registration failed: ${err.message}`);
+    }
+  }
 
-    // Persist oauth: true in config if not already set
+  if (!clientId) {
+    console.error('  ❌ No registration endpoint in server metadata — cannot obtain client_id.');
+    return;
+  }
+
+  // 3. Run OAuth flow
+  try {
+    await runOAuthFlow(serverName, {
+      authorization_url: discovered.authorization_url,
+      token_url: discovered.token_url,
+      client_id: clientId,
+      scopes: discovered.scopes_supported || '',
+    });
+    console.log('  ✅ Authenticated.');
+
     if (!server.oauth) {
       server.oauth = true;
       await writeConfig(config);
@@ -162,4 +153,55 @@ async function authenticate(config, serverName, server, force) {
   } catch (err) {
     console.error(`  ❌ OAuth flow failed: ${err.message}`);
   }
+}
+
+/**
+ * Dynamic client registration (RFC 7591).
+ */
+function registerClient(registrationEndpoint) {
+  return new Promise((resolve) => {
+    const body = JSON.stringify({
+      client_name: 'gtwmcp',
+      grant_types: ['authorization_code', 'refresh_token'],
+      response_types: ['code'],
+      token_endpoint_auth_method: 'none',
+    });
+
+    const url = new URL(registrationEndpoint);
+    const transport = url.protocol === 'https:' ? https : http;
+
+    const req = transport.request(
+      url.href,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          try {
+            const data = JSON.parse(Buffer.concat(chunks).toString('utf-8'));
+            if (data.client_id) {
+              resolve({ client_id: data.client_id });
+            } else {
+              resolve(null);
+            }
+          } catch {
+            resolve(null);
+          }
+        });
+      }
+    );
+
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+
+    req.write(body);
+    req.end();
+  });
 }

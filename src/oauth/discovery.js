@@ -1,4 +1,4 @@
-// OAuth server metadata discovery via .well-known endpoints
+// OAuth server metadata discovery via .well-known endpoints + WWW-Authenticate fallback
 
 import http from 'node:http';
 import https from 'node:https';
@@ -8,57 +8,126 @@ import { URL } from 'node:url';
  * @typedef {Object} OAuthMetadata
  * @property {string} authorization_url
  * @property {string} token_url
- * @property {string[]} [scopes_supported]
  * @property {string} [registration_endpoint]
+ * @property {string[]} [scopes_supported]
  */
 
 /**
  * Discover OAuth server metadata from a server URL.
  * Best-effort — returns null on any failure.
  *
+ * Two strategies, tried in order:
+ *   1. GET <origin>/.well-known/oauth-protected-resource → follow auth_server
+ *   2. POST <serverUrl> (no auth) → read resource_metadata from WWW-Authenticate header
+ *
  * @param {string} serverUrl - The MCP server URL (e.g. https://example.com/mcp)
  * @returns {Promise<OAuthMetadata|null>}
  */
 export async function discoverOAuthMetadata(serverUrl) {
+  // Strategy 1: root-level .well-known
+  let metadata = await discoverViaRootWellKnown(serverUrl);
+  if (metadata) return metadata;
+
+  // Strategy 2: POST to server, read WWW-Authenticate 401 header
+  metadata = await discoverViaWwwAuthenticate(serverUrl);
+  if (metadata) return metadata;
+
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// Strategy 1: GET <origin>/.well-known/oauth-protected-resource
+// ---------------------------------------------------------------------------
+
+async function discoverViaRootWellKnown(serverUrl) {
   try {
     const origin = getOrigin(serverUrl);
     if (!origin) return null;
 
-    // Step 3: GET /.well-known/oauth-protected-resource
     const protectedResource = await fetchJSON(`${origin}/.well-known/oauth-protected-resource`);
     if (!protectedResource) return null;
 
     const authServer = protectedResource.authorization_server;
     if (!authServer) return null;
 
-    // Step 5: GET authorization_server/.well-known/oauth-authorization-server
-    // authServer may be a full URL or a relative path — resolve against origin if needed
     const authServerUrl = resolveUrl(authServer, origin);
     const authMetadata = await fetchJSON(`${authServerUrl}/.well-known/oauth-authorization-server`);
     if (!authMetadata) return null;
 
-    // Step 6: Extract relevant fields
-    /** @type {OAuthMetadata} */
-    const result = {
-      authorization_url: authMetadata.authorization_endpoint,
-      token_url: authMetadata.token_endpoint,
-    };
-
-    if (authMetadata.scopes_supported) {
-      result.scopes_supported = authMetadata.scopes_supported;
-    }
-    if (authMetadata.registration_endpoint) {
-      result.registration_endpoint = authMetadata.registration_endpoint;
-    }
-
-    // Validate required fields
-    if (!result.authorization_url || !result.token_url) return null;
-
-    return result;
+    return buildMetadata(authMetadata);
   } catch {
-    // Step 7: any failure → null
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Strategy 2: POST to server → read WWW-Authenticate → resource_metadata
+// ---------------------------------------------------------------------------
+
+async function discoverViaWwwAuthenticate(serverUrl) {
+  try {
+    // Send a minimal POST (no auth) to trigger a 401 with WWW-Authenticate
+    const response = await postJson(serverUrl, JSON.stringify({
+      jsonrpc: '2.0',
+      id: 0,
+      method: 'initialize',
+      params: {
+        protocolVersion: '2024-11-05',
+        capabilities: {},
+        clientInfo: { name: 'gtwmcp', version: '0.1.0' },
+      },
+    }));
+
+    if (response.statusCode !== 401) return null;
+
+    const wwwAuth = response.headers['www-authenticate'];
+    if (!wwwAuth) return null;
+
+    const resourceMetaUrl = parseWwwAuthenticateParam(wwwAuth, 'resource_metadata');
+    if (!resourceMetaUrl) return null;
+
+    // Fetch the resource metadata
+    const resourceMeta = await fetchJSON(resourceMetaUrl);
+    if (!resourceMeta) return null;
+
+    // Get the authorization server URL
+    const authServers = resourceMeta.authorization_servers;
+    if (!authServers || !Array.isArray(authServers) || authServers.length === 0) return null;
+
+    const authServerUrl = authServers[0];
+    // .well-known is always at the origin root — strip any path from authServerUrl
+    const authOrigin = getOrigin(authServerUrl) || authServerUrl;
+    const authMetadata = await fetchJSON(`${authOrigin}/.well-known/oauth-authorization-server`);
+    if (!authMetadata) return null;
+
+    return buildMetadata(authMetadata);
+  } catch {
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildMetadata(authMetadata) {
+  /** @type {OAuthMetadata} */
+  const result = {
+    authorization_url: authMetadata.authorization_endpoint,
+    token_url: authMetadata.token_endpoint,
+  };
+
+  if (authMetadata.scopes_supported) {
+    result.scopes_supported = authMetadata.scopes_supported;
+  }
+  if (authMetadata.registration_endpoint) {
+    result.registration_endpoint = authMetadata.registration_endpoint;
+  }
+
+  // Validate required fields
+  if (!result.authorization_url || !result.token_url) return null;
+
+  return result;
 }
 
 /**
@@ -113,4 +182,53 @@ function fetchJSON(url) {
     req.on('error', () => resolve(null));
     req.on('timeout', () => { req.destroy(); resolve(null); });
   });
+}
+
+/**
+ * POST JSON to a URL and return the full response (status, headers, body).
+ */
+function postJson(urlStr, body) {
+  return new Promise((resolve) => {
+    const postUrl = new URL(urlStr);
+    const transport = postUrl.protocol === 'https:' ? https : http;
+
+    const req = transport.request(
+      urlStr,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          resolve({
+            statusCode: res.statusCode,
+            headers: res.headers,
+            body: Buffer.concat(chunks).toString('utf-8'),
+          });
+        });
+      }
+    );
+
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+
+    req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Parse a quoted parameter value from a WWW-Authenticate header.
+ * e.g. resource_metadata="https://..." → https://...
+ */
+function parseWwwAuthenticateParam(header, paramName) {
+  const regex = new RegExp(`${paramName}\\s*=\\s*"([^"]+)"`, 'i');
+  const match = header.match(regex);
+  return match ? match[1] : null;
 }
