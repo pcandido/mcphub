@@ -1,5 +1,9 @@
 # gtwmcp — MCP Gateway
 
+> ⚠️ **This package has been renamed.**  
+> Install the new package: `npm install -g @pcandido/mcphub`  
+> All future development continues at [pcandido/mcphub](https://github.com/pcandido/mcphub).
+
 [![CI](https://github.com/pcandido/gtwmcp/actions/workflows/ci.yml/badge.svg)](https://github.com/pcandido/gtwmcp/actions/workflows/ci.yml)
 [![npm version](https://img.shields.io/npm/v/gtwmcp)](https://www.npmjs.com/package/gtwmcp)
 [![node](https://img.shields.io/node/v/gtwmcp)](https://nodejs.org)
