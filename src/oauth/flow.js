@@ -190,9 +190,25 @@ function startCallbackServer(expectedState, port) {
             return reject(new Error('No authorization code received'));
           }
 
-          // Success — auto-close after countdown
+          // Success — try to close, fallback to friendly message
           res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(page('Authorization complete', '<p>Token received successfully.</p>', 'ok'));
+          res.end(`<!DOCTYPE html><html lang="en">
+<head><meta charset="utf-8"><title>gtwmcp — done</title>
+<style>
+  * { margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; background: #0d0d0d; color: #e5e5e5; }
+  .card { text-align: center; max-width: 360px; }
+  h1 { font-size: 1.5rem; color: #16a34a; margin-bottom: .5rem; }
+  p { font-size: .75rem; color: #525252; margin-top: 1rem; }
+</style></head>
+<body><div class="card">
+  <h1>Authorization complete</h1>
+  <p>You can close this window.</p>
+</div></body>
+<script>close()</script>
+</html>`);
 
           server.close();
           resolve(code);
