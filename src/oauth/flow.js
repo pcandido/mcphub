@@ -188,9 +188,9 @@ function startCallbackServer(expectedState, port) {
             return reject(new Error('No authorization code received'));
           }
 
-          // Step 3: Send success page
+          // Success — auto-close after countdown
           res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end(page('Authorization complete', '<p>You can close this window.</p>', 'ok'));
+          res.end(page('Authorization complete', '<p>You can close this window.</p>', 'ok', true));
 
           server.close();
           resolve(code);
@@ -239,8 +239,17 @@ function probePort(port) {
 /**
  * Render an HTML page that auto-closes after 3 seconds with a countdown.
  */
-function page(title, body, kind) {
+function page(title, body, kind, autoClose = false) {
   const color = kind === 'ok' ? '#16a34a' : '#dc2626';
+  const timerHtml = autoClose ? `
+  <div class="timer" id="n">3</div>
+  <div class="dim">this tab closes automatically</div>
+  <script>
+    let s = 3;
+    const el = document.getElementById('n');
+    const iv = setInterval(() => { s--; if (s <= 0) { clearInterval(iv); window.close(); } else { el.textContent = s; } }, 1000);
+  </script>` : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -264,14 +273,8 @@ function page(title, body, kind) {
 <div class="card">
   <h1>${title}</h1>
   ${body}
-  <div class="timer" id="n">3</div>
-  <div class="dim">this tab closes automatically</div>
+  ${timerHtml}
 </div>
-<script>
-  let s = 3;
-  const el = document.getElementById('n');
-  const iv = setInterval(() => { s--; if (s <= 0) { clearInterval(iv); window.close(); } else { el.textContent = s; } }, 1000);
-</script>
 </body>
 </html>`;
 }
