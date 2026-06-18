@@ -6,6 +6,7 @@
   "bin": {
     "gtwmcp": "./bin/gtwmcp.js"
   },
+  "packageManager": "npm@11.6.2",
   "engines": {
     "node": ">=22"
   },
