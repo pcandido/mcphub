@@ -169,28 +169,28 @@ function startCallbackServer(expectedState, port) {
 
           if (error) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
-            res.end(`<html><body><h1>Authorization failed</h1><p>${error}</p><p>You can close this window.</p></body></html>`);
+            res.end(page('Authorization failed', `<p>${error}</p>`, 'error'));
             server.close();
             return reject(new Error(`OAuth error: ${error}`));
           }
 
           if (returnedState !== expectedState) {
-            res.writeHead(400);
-            res.end('State mismatch');
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(page('Session expired', '<p>The authorization session is no longer valid. Please try again.</p>', 'error'));
             server.close();
             return reject(new Error('OAuth state mismatch — possible CSRF attack'));
           }
 
           if (!code) {
-            res.writeHead(400);
-            res.end('Missing authorization code');
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            res.end(page('Missing code', '<p>No authorization code received. Please try again.</p>', 'error'));
             server.close();
             return reject(new Error('No authorization code received'));
           }
 
           // Step 3: Send success page
           res.writeHead(200, { 'Content-Type': 'text/html' });
-          res.end('<html><body><h1>Authorization complete</h1><p>You can close this window.</p></body></html>');
+          res.end(page('Authorization complete', '<p>You can close this window.</p>', 'ok'));
 
           server.close();
           resolve(code);
@@ -234,6 +234,46 @@ function probePort(port) {
     });
     server.on('error', () => resolve(false));
   });
+}
+
+/**
+ * Render an HTML page that auto-closes after 3 seconds with a countdown.
+ */
+function page(title, body, kind) {
+  const color = kind === 'ok' ? '#16a34a' : '#dc2626';
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gtwmcp — ${title}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    display: flex; justify-content: center; align-items: center;
+    height: 100vh; background: #0d0d0d; color: #e5e5e5;
+  }
+  .card { text-align: center; max-width: 360px; }
+  h1 { font-size: 1.5rem; color: ${color}; margin-bottom: .5rem; }
+  p { font-size: .875rem; color: #a3a3a3; line-height: 1.5; }
+  .timer { font-size: 2rem; font-weight: 700; color: ${color}; margin-top: 1.5rem; }
+  .dim { font-size: .75rem; color: #525252; margin-top: .25rem; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>${title}</h1>
+  ${body}
+  <div class="timer" id="n">3</div>
+  <div class="dim">this tab closes automatically</div>
+</div>
+<script>
+  let s = 3;
+  const el = document.getElementById('n');
+  const iv = setInterval(() => { s--; if (s <= 0) { clearInterval(iv); window.close(); } else { el.textContent = s; } }, 1000);
+</script>
+</body>
+</html>`;
 }
 
 /**
