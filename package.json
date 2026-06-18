@@ -1,6 +1,6 @@
 {
   "name": "gtwmcp",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "MCP Gateway — aggregate multiple MCP servers behind a single stdio interface",
   "license": "MIT",
   "author": "Paulo Cândido",
