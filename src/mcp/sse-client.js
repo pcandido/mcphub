@@ -337,9 +337,45 @@ export class SseClient {
         return null; // notification-style POST — no body
       }
 
-      return JSON.parse(raw);
+      // The response may be SSE-framed (event + data lines). Parse it.
+      return parseJsonOrSse(raw);
     } finally {
       clearTimeout(timer);
     }
   }
+}
+
+/**
+ * Parse a response body that may be plain JSON or SSE-framed.
+ * SSE format: "event: message\ndata: {...json...}\n\n"
+ */
+function parseJsonOrSse(raw) {
+  const trimmed = raw.trim();
+
+  // Try plain JSON first
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    // Not plain JSON — try SSE framing
+  }
+
+  // Parse SSE events: split on double newline, then extract data: lines
+  const events = trimmed.split(/\r?\n\r?\n/);
+  for (const event of events) {
+    let data = null;
+    for (const line of event.split(/\r?\n/)) {
+      if (line.startsWith("data: ")) {
+        data = line.slice("data: ".length).trim();
+      }
+    }
+    if (data) {
+      try {
+        return JSON.parse(data);
+      } catch {
+        // keep looking
+      }
+    }
+  }
+
+  throw new Error(`Unexpected response format: ${trimmed.slice(0, 200)}`);
 }
