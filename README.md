@@ -6,9 +6,10 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](package.json)
 
-Aggregate multiple MCP servers behind a single stdio interface. Supports stdio-based
-and HTTP SSE-based upstream MCPs (with OAuth). Configuration in `~/.gtwmcp.json`,
-OAuth secrets in the OS keychain.
+A zero-dependency MCP gateway. Connect multiple AI harnesses to multiple MCP
+servers through a single, centrally-managed stdio interface. No overhead, no
+bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in
+config files.
 
 ![Architecture](docs/diagrams/architecture.png)
 

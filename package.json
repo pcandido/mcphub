@@ -1,7 +1,7 @@
 {
   "name": "gtwmcp",
   "version": "0.2.0",
-  "description": "MCP Gateway — aggregate multiple MCP servers behind a single stdio interface",
+  "description": "A zero-dependency MCP gateway. Connect multiple AI harnesses to multiple MCP servers through a single, centrally-managed stdio interface. No overhead, no bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in config files.",
   "license": "MIT",
   "author": "Paulo Cândido",
   "repository": {
