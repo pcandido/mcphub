@@ -6,6 +6,7 @@
 //   - Handles OAuth token management via an Authorization header
 
 import { createRequest, createNotification } from "../mcp/protocol.js";
+import { refreshTokenIfNeeded } from "../oauth/refresh.js";
 import http from "node:http";
 import https from "node:https";
 
@@ -276,9 +277,10 @@ export class SseClient {
    * @param {string} urlStr
    * @param {string} body
    * @param {number} timeoutMs
+   * @param {boolean} [_isRetry=false]  Internal — prevents infinite refresh loops
    * @returns {Promise<any>} Parsed JSON response body
    */
-  async _post(urlStr, body, timeoutMs) {
+  async _post(urlStr, body, timeoutMs, _isRetry = false) {
     const postUrl = new URL(urlStr);
     const postModule = postUrl.protocol === "https:" ? https : http;
 
@@ -311,8 +313,15 @@ export class SseClient {
       }
       const raw = Buffer.concat(chunks).toString("utf-8");
 
-      // Check for 401
+      // Check for 401 — attempt automatic token refresh
       if (response.statusCode === 401) {
+        if (!_isRetry && this.serverName) {
+          const newToken = await refreshTokenIfNeeded(this.serverName);
+          if (newToken) {
+            this._accessToken = newToken;
+            return this._post(urlStr, body, timeoutMs, true);
+          }
+        }
         throw new Error("OAuth token expired");
       }
 
