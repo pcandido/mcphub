@@ -61,6 +61,9 @@ export class SseClient {
     /** @type {string|null} */
     this._accessToken = null;
 
+    /** @type {number} default request timeout in ms */
+    this._timeout = config.timeout || 30000;
+
     /** @type {number} */
     this._nextId = 1;
   }
@@ -191,11 +194,12 @@ export class SseClient {
    * @param {number} [timeoutMs=30000]
    * @returns {Promise<any>} The result field from the JSON-RPC response
    */
-  async request(method, params, timeoutMs = 30000) {
+  async request(method, params, timeoutMs) {
     const id = this._nextId++;
     const body = JSON.stringify(createRequest(id, method, params));
 
-    const json = await this._post(this._endpointUrl, body, timeoutMs);
+    const effectiveTimeout = timeoutMs ?? this._timeout;
+    const json = await this._post(this._endpointUrl, body, effectiveTimeout);
 
     if (json && typeof json === "object" && "result" in json) {
       return json.result;
@@ -222,7 +226,7 @@ export class SseClient {
    */
   async sendNotification(method, params) {
     const body = JSON.stringify(createNotification(method, params));
-    await this._post(this._endpointUrl, body, 30000);
+    await this._post(this._endpointUrl, body, this._timeout);
   }
 
   // -----------------------------------------------------------------------

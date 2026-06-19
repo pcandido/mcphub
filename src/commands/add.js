@@ -7,7 +7,7 @@ import { writeConfig } from '../config/writer.js';
 function showUsage() {
   process.stdout.write(
     'Usage: mcphub add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
-    '[--env <K,V,...>] [--url <url>] [--description <desc>] [--oauth]\n'
+    '[--env <K,V,...>] [--url <url>] [--description <desc>] [--oauth] [--timeout <ms>]\n'
   );
 }
 
@@ -93,7 +93,10 @@ async function promptSse(rl) {
   const oauthRaw = (await rl.question('  OAuth required? [y/N]: ')).trim();
   const oauth = oauthRaw.toLowerCase() === 'y' || oauthRaw.toLowerCase() === 'yes';
 
-  return { url, description, oauth };
+  const timeoutRaw = (await rl.question('  Timeout in ms (default 30000): ')).trim();
+  const timeout = timeoutRaw ? parseInt(timeoutRaw, 10) : undefined;
+
+  return { url, description, oauth, timeout };
 }
 
 /**
@@ -122,6 +125,10 @@ async function buildServerConfig(serverName, opts, existingConfig) {
       config.oauth = true;
     } else {
       config.oauth = false;
+    }
+
+    if (opts.timeout !== undefined) {
+      config.timeout = parseInt(opts.timeout, 10);
     }
 
     return config;
@@ -182,6 +189,7 @@ export default async function addServer(args) {
           url: sseOpts.url,
           description: sseOpts.description,
           oauth: sseOpts.oauth,
+          timeout: sseOpts.timeout,
         };
       }
 
@@ -250,6 +258,10 @@ export default async function addServer(args) {
 
       if (flags.oauth) {
         opts.oauth = true;
+      }
+
+      if (flags.timeout) {
+        opts.timeout = parseInt(flags.timeout, 10);
       }
     }
 

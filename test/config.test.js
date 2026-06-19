@@ -137,6 +137,55 @@ describe("loadConfig", () => {
     assert.equal(loaded.servers.demo.description, "List files");
     await cleanup(dir);
   });
+
+  it("accepts timeout field on SSE server", async () => {
+    const { dir } = await setupConfig({
+      version: 1,
+      servers: {
+        api: { type: "sse", enabled: true, url: "https://example.com/sse", timeout: 60000 },
+      },
+    });
+    const { loadConfig } = await import("../src/config/loader.js");
+    const loaded = await loadConfig();
+    assert.equal(loaded.servers.api.timeout, 60000);
+    await cleanup(dir);
+  });
+
+  it("rejects zero timeout on SSE server", async () => {
+    const { dir } = await setupConfig({
+      version: 1,
+      servers: {
+        bad: { type: "sse", enabled: true, url: "https://example.com/sse", timeout: 0 },
+      },
+    });
+    const { loadConfig } = await import("../src/config/loader.js");
+    await assert.rejects(loadConfig, /timeout/);
+    await cleanup(dir);
+  });
+
+  it("rejects negative timeout on SSE server", async () => {
+    const { dir } = await setupConfig({
+      version: 1,
+      servers: {
+        bad: { type: "sse", enabled: true, url: "https://example.com/sse", timeout: -1 },
+      },
+    });
+    const { loadConfig } = await import("../src/config/loader.js");
+    await assert.rejects(loadConfig, /timeout/);
+    await cleanup(dir);
+  });
+
+  it("rejects non-number timeout on SSE server", async () => {
+    const { dir } = await setupConfig({
+      version: 1,
+      servers: {
+        bad: { type: "sse", enabled: true, url: "https://example.com/sse", timeout: "fast" },
+      },
+    });
+    const { loadConfig } = await import("../src/config/loader.js");
+    await assert.rejects(loadConfig, /timeout/);
+    await cleanup(dir);
+  });
 });
 
 describe("writeConfig", () => {
