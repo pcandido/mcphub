@@ -117,6 +117,10 @@ mcphub serve             Start the MCP gateway in stdio mode
 | `--url <url>` | SSE endpoint URL (required for sse) |
 | `--description <desc>` | Human-readable description |
 | `--oauth` | Mark the server as requiring OAuth (SSE only) |
+| `--timeout <ms>` | Request timeout in milliseconds (SSE only, default: 30000) |
+
+Omitting `--timeout` means the field is not written to the config file and the
+default 30 seconds is used at runtime.
 
 Omitting `--type` enters interactive mode — mcphub will prompt for each field.
 
@@ -143,8 +147,8 @@ The gateway (`mcphub serve`) speaks MCP over stdio to the AI harness. On startup
 ![Gateway](docs/diagrams/gateway.png)
 
 Failed upstreams are logged and skipped — the gateway keeps running with the
-remaining servers. OAuth tokens are auto-refreshed before each call if they're
-within 30 seconds of expiry.
+remaining servers. OAuth tokens are refreshed at startup and automatically on
+HTTP 401 responses during tool calls.
 
 ## Tool Filtering
 
@@ -193,7 +197,8 @@ MCPHUB_BLOCK_LIST="github__delete_*,github__admin_*"
       "headers": {
         "X-Custom-Header": "value"
       },
-      "oauth": true
+      "oauth": true,
+      "timeout": 60000
     }
   }
 }
@@ -210,6 +215,7 @@ MCPHUB_BLOCK_LIST="github__delete_*,github__admin_*"
 | `url` | Required (sse) | SSE endpoint URL |
 | `headers` | No | Custom HTTP headers for SSE requests |
 | `oauth` | No | `true` if the server requires OAuth (SSE only) |
+| `timeout` | No | Request timeout in milliseconds (SSE only, default: 30000) |
 
 When `"oauth": true`, all OAuth data (tokens, client ID, endpoints) lives in
 the OS keychain — never in this file.
@@ -245,10 +251,15 @@ on subsequent auth flows. Use `--client-id` to override and skip DCR.
 
 ### Token refresh
 
-At runtime, `mcphub serve` checks token expiry before each call. If the token
-expires within 30 seconds, it silently refreshes using the stored refresh token
-and persists the new token set back to the keychain. If refresh fails, the
-server is skipped with a warning — run `mcphub auth` to re-authenticate.
+At startup, `mcphub serve` checks token expiry before connecting to each OAuth
+server. If the token is expired or within 30 seconds of expiry, it silently
+refreshes using the stored refresh token and persists the new token set back to
+the keychain.
+
+If a token expires mid-session (HTTP 401 on any tool call), the SSE client
+automatically refreshes the token and retries the request once — the caller
+doesn't see the 401. Only if the refresh itself fails (e.g., refresh token
+expired) does the error propagate. Run `mcphub auth` to re-authenticate.
 
 ### Keychain
 
@@ -296,7 +307,7 @@ via the `Authorization` header.
 ```bash
 npm install
 npm run check   # syntax validation (all .js files)
-npm test        # 57 tests
+npm test        # 61 tests
 ```
 
 Zero external dependencies. Node.js 22+ stdlib only.
