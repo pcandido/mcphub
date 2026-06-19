@@ -151,7 +151,20 @@ describe("loadConfig", () => {
     await cleanup(dir);
   });
 
-  it("rejects zero timeout on SSE server", async () => {
+  it("accepts timeout field on stdio server", async () => {
+    const { dir } = await setupConfig({
+      version: 1,
+      servers: {
+        cmd: { type: "stdio", enabled: true, command: "ls", timeout: 10000 },
+      },
+    });
+    const { loadConfig } = await import("../src/config/loader.js");
+    const loaded = await loadConfig();
+    assert.equal(loaded.servers.cmd.timeout, 10000);
+    await cleanup(dir);
+  });
+
+  it("rejects zero timeout on server", async () => {
     const { dir } = await setupConfig({
       version: 1,
       servers: {
@@ -163,7 +176,7 @@ describe("loadConfig", () => {
     await cleanup(dir);
   });
 
-  it("rejects negative timeout on SSE server", async () => {
+  it("rejects negative timeout on server", async () => {
     const { dir } = await setupConfig({
       version: 1,
       servers: {
@@ -175,11 +188,23 @@ describe("loadConfig", () => {
     await cleanup(dir);
   });
 
-  it("rejects non-number timeout on SSE server", async () => {
+  it("rejects non-number timeout on server", async () => {
     const { dir } = await setupConfig({
       version: 1,
       servers: {
         bad: { type: "sse", enabled: true, url: "https://example.com/sse", timeout: "fast" },
+      },
+    });
+    const { loadConfig } = await import("../src/config/loader.js");
+    await assert.rejects(loadConfig, /timeout/);
+    await cleanup(dir);
+  });
+
+  it("rejects invalid timeout on stdio server", async () => {
+    const { dir } = await setupConfig({
+      version: 1,
+      servers: {
+        bad: { type: "stdio", enabled: true, command: "ls", timeout: 0 },
       },
     });
     const { loadConfig } = await import("../src/config/loader.js");

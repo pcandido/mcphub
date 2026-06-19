@@ -78,7 +78,10 @@ async function promptStdio(rl) {
 
   const description = (await rl.question('  Description: ')).trim();
 
-  return { command, args, env, description };
+  const timeoutRaw = (await rl.question('  Timeout in ms (default 30000): ')).trim();
+  const timeout = timeoutRaw ? parseInt(timeoutRaw, 10) : undefined;
+
+  return { command, args, env, description, timeout };
 }
 
 /**
@@ -127,15 +130,15 @@ async function buildServerConfig(serverName, opts, existingConfig) {
       config.oauth = false;
     }
 
-    if (opts.timeout !== undefined) {
-      config.timeout = parseInt(opts.timeout, 10);
-    }
-
     return config;
   }
 
   if (opts.description) config.description = opts.description;
   config.enabled = existingConfig?.enabled ?? true;
+
+  if (opts.timeout !== undefined) {
+    config.timeout = parseInt(opts.timeout, 10);
+  }
 
   return config;
 }
@@ -181,6 +184,7 @@ export default async function addServer(args) {
           args: stdioOpts.args,
           env: stdioOpts.env,
           description: stdioOpts.description,
+          timeout: stdioOpts.timeout,
         };
       } else {
         const sseOpts = await promptSse(rl);
@@ -259,10 +263,10 @@ export default async function addServer(args) {
       if (flags.oauth) {
         opts.oauth = true;
       }
+    }
 
-      if (flags.timeout) {
-        opts.timeout = parseInt(flags.timeout, 10);
-      }
+    if (flags.timeout) {
+      opts.timeout = parseInt(flags.timeout, 10);
     }
 
     if (existingServer) {

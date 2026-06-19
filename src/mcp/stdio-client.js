@@ -15,8 +15,11 @@ export class StdioClient {
   /** @type {string} */
   #serverName;
 
-  /** @type {{ command: string, args?: string[], env?: Record<string,string> }} */
+  /** @type {{ command: string, args?: string[], env?: Record<string,string>, timeout?: number }} */
   #config;
+
+  /** @type {number} default request timeout in ms */
+  #timeout;
 
   /** @type {number} */
   #nextId = 1;
@@ -34,6 +37,7 @@ export class StdioClient {
   constructor(serverName, config) {
     this.#serverName = serverName;
     this.#config = config;
+    this.#timeout = config.timeout || 30000;
   }
 
   get running() {
@@ -112,16 +116,18 @@ export class StdioClient {
    * @param {number} [timeoutMs=30000]
    * @returns {Promise<any>}
    */
-  request(method, params, timeoutMs = 30000) {
+  request(method, params, timeoutMs) {
     if (!this.#proc) throw new Error(`${this.#serverName}: not started`);
+
+    const effectiveTimeout = timeoutMs ?? this.#timeout;
 
     const id = this.#nextId++;
 
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
-        reject(new Error(`${this.#serverName}: request "${method}" (id=${id}) timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
+        reject(new Error(`${this.#serverName}: request "${method}" (id=${id}) timed out after ${effectiveTimeout}ms`));
+      }, effectiveTimeout);
 
       this.#pending.set(id, { resolve, reject, timer });
 

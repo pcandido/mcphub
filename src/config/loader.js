@@ -66,10 +66,10 @@ function validateServer(name, server) {
     if (server.oauth !== undefined && typeof server.oauth !== 'boolean') {
       throw new Error(`Server "${name}" (type: sse) "oauth" must be a boolean`);
     }
+  }
 
-    if (server.timeout !== undefined && (typeof server.timeout !== 'number' || server.timeout <= 0)) {
-      throw new Error(`Server "${name}" (type: sse) "timeout" must be a positive number (milliseconds)`);
-    }
+  if (server.timeout !== undefined && (typeof server.timeout !== 'number' || server.timeout <= 0)) {
+    throw new Error(`Server "${name}" "timeout" must be a positive number (milliseconds)`);
   }
 }
 

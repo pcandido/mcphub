@@ -117,7 +117,7 @@ mcphub serve             Start the MCP gateway in stdio mode
 | `--url <url>` | SSE endpoint URL (required for sse) |
 | `--description <desc>` | Human-readable description |
 | `--oauth` | Mark the server as requiring OAuth (SSE only) |
-| `--timeout <ms>` | Request timeout in milliseconds (SSE only, default: 30000) |
+| `--timeout <ms>` | Request timeout in milliseconds (default: 30000) |
 
 Omitting `--timeout` means the field is not written to the config file and the
 default 30 seconds is used at runtime.
@@ -187,7 +187,8 @@ MCPHUB_BLOCK_LIST="github__delete_*,github__admin_*"
       "args": ["-y", "@modelcontextprotocol/server-github"],
       "env": {
         "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_xxxxxxxxxxxx"
-      }
+      },
+      "timeout": 30000
     },
     "jira": {
       "type": "sse",
@@ -215,7 +216,7 @@ MCPHUB_BLOCK_LIST="github__delete_*,github__admin_*"
 | `url` | Required (sse) | SSE endpoint URL |
 | `headers` | No | Custom HTTP headers for SSE requests |
 | `oauth` | No | `true` if the server requires OAuth (SSE only) |
-| `timeout` | No | Request timeout in milliseconds (SSE only, default: 30000) |
+| `timeout` | No | Request timeout in milliseconds (default: 30000) |
 
 When `"oauth": true`, all OAuth data (tokens, client ID, endpoints) lives in
 the OS keychain — never in this file.
@@ -307,7 +308,7 @@ via the `Authorization` header.
 ```bash
 npm install
 npm run check   # syntax validation (all .js files)
-npm test        # 61 tests
+npm test        # 63 tests
 ```
 
 Zero external dependencies. Node.js 22+ stdlib only.
