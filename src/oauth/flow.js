@@ -18,6 +18,7 @@ import { set as keychainSet } from '../keychain/index.js';
  * @param {string} metadata.authorization_url
  * @param {string} metadata.token_url
  * @param {string} metadata.client_id
+ * @param {string} [metadata.resource_url]     - RFC 8707 resource indicator (the MCP server URL)
  * @param {string|string[]} [metadata.scopes]
  * @param {number} [metadata.port]
  * @returns {Promise<Object>} The saved keychain entry
@@ -36,13 +37,14 @@ export async function pickFreePort() {
 
 async function _runOAuthFlow(serverName, metadata) {
   // Step 1: Resolve metadata
-  let authorizationUrl, tokenUrl, clientId, scopes;
+  let authorizationUrl, tokenUrl, clientId, scopes, resourceUrl;
 
   if (metadata) {
     authorizationUrl = metadata.authorization_url;
     tokenUrl = metadata.token_url;
     clientId = metadata.client_id;
     scopes = metadata.scopes || '';
+    resourceUrl = metadata.resource_url || null;
   } else {
     const rl = readline.createInterface({ input, output });
     try {
@@ -82,6 +84,7 @@ async function _runOAuthFlow(serverName, metadata) {
   authParams.set('code_challenge_method', 'S256');
   authParams.set('redirect_uri', redirectUri);
   if (scopes) authParams.set('scope', scopes);
+  if (resourceUrl) authParams.set('resource', resourceUrl);
   authParams.set('state', state);
 
   const authUrl = `${authorizationUrl}?${authParams.toString()}`;
@@ -105,6 +108,7 @@ async function _runOAuthFlow(serverName, metadata) {
   tokenBody.set('code_verifier', codeVerifier);
   tokenBody.set('redirect_uri', redirectUri);
   tokenBody.set('client_id', clientId);
+  if (resourceUrl) tokenBody.set('resource', resourceUrl);
 
   const tokenResponse = await postForm(tokenUrl, tokenBody);
 
@@ -130,6 +134,10 @@ async function _runOAuthFlow(serverName, metadata) {
       ? new Date(Date.now() + refresh_token_expires_in * 1000).toISOString()
       : null,
   };
+
+  if (resourceUrl) {
+    entry.resource_url = resourceUrl;
+  }
 
   await keychainSet(serverName, entry);
   return entry;

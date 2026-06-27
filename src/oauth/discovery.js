@@ -145,6 +145,9 @@ function buildMetadata(authMetadata) {
   if (authMetadata.registration_endpoint) {
     result.registration_endpoint = authMetadata.registration_endpoint;
   }
+  if (authMetadata.resource_parameter_supported) {
+    result.resource_parameter_supported = true;
+  }
 
   // Validate required fields
   if (!result.authorization_url || !result.token_url) return null;

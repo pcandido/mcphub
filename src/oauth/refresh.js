@@ -28,6 +28,11 @@ export async function refreshTokenIfNeeded(serverName) {
   params.append('refresh_token', secret.refresh_token);
   params.append('client_id', secret.client_id);
 
+  // RFC 8707: include resource indicator if stored
+  if (secret.resource_url) {
+    params.append('resource', secret.resource_url);
+  }
+
   const body = params.toString();
 
   const url = new URL(secret.token_url);

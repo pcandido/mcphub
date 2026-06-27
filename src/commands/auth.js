@@ -171,6 +171,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
       token_url: discovered.token_url,
       client_id: clientId,
       scopes: scopes || '',
+      resource_url: server.url,
       port,
     });
     console.log('  ✅ Authenticated.');
