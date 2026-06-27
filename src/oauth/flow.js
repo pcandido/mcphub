@@ -21,6 +21,7 @@ import { set as keychainSet } from '../keychain/index.js';
  * @param {string} [metadata.resource_url]     - RFC 8707 resource indicator (the MCP server URL)
  * @param {string|string[]} [metadata.scopes]
  * @param {number} [metadata.port]
+ * @param {boolean} [metadata.insecure]        - Bypass TLS verification for token exchange
  * @returns {Promise<Object>} The saved keychain entry
  */
 export async function runOAuthFlow(serverName, metadata) {
@@ -37,7 +38,7 @@ export async function pickFreePort() {
 
 async function _runOAuthFlow(serverName, metadata) {
   // Step 1: Resolve metadata
-  let authorizationUrl, tokenUrl, clientId, scopes, resourceUrl;
+  let authorizationUrl, tokenUrl, clientId, scopes, resourceUrl, insecure;
 
   if (metadata) {
     authorizationUrl = metadata.authorization_url;
@@ -45,6 +46,7 @@ async function _runOAuthFlow(serverName, metadata) {
     clientId = metadata.client_id;
     scopes = metadata.scopes || '';
     resourceUrl = metadata.resource_url || null;
+    insecure = !!metadata.insecure;
   } else {
     const rl = readline.createInterface({ input, output });
     try {
@@ -110,7 +112,7 @@ async function _runOAuthFlow(serverName, metadata) {
   tokenBody.set('client_id', clientId);
   if (resourceUrl) tokenBody.set('resource', resourceUrl);
 
-  const tokenResponse = await postForm(tokenUrl, tokenBody);
+  const tokenResponse = await postForm(tokenUrl, tokenBody, insecure);
 
   if (!tokenResponse || tokenResponse.error) {
     const errMsg = tokenResponse?.error_description || tokenResponse?.error || 'Token exchange failed';
@@ -137,6 +139,9 @@ async function _runOAuthFlow(serverName, metadata) {
 
   if (resourceUrl) {
     entry.resource_url = resourceUrl;
+  }
+  if (insecure) {
+    entry.insecure = true;
   }
 
   await keychainSet(serverName, entry);
@@ -244,10 +249,13 @@ function openBrowser(url) {
   });
 }
 
-function postForm(url, body) {
+function postForm(url, body, insecure) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
     const transport = parsed.protocol === 'https:' ? https : http;
+    const agent = parsed.protocol === 'https:' && insecure
+      ? new https.Agent({ rejectUnauthorized: false })
+      : undefined;
 
     const postData = body.toString();
 
@@ -261,6 +269,7 @@ function postForm(url, body) {
         'Content-Length': Buffer.byteLength(postData),
       },
       timeout: 15000,
+      agent,
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));

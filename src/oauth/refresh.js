@@ -38,6 +38,10 @@ export async function refreshTokenIfNeeded(serverName) {
   const url = new URL(secret.token_url);
   const mod = url.protocol === 'https:' ? https : http;
 
+  const agent = url.protocol === 'https:' && secret.insecure
+    ? new https.Agent({ rejectUnauthorized: false })
+    : undefined;
+
   const result = await new Promise((resolve) => {
     const req = mod.request(
       {
@@ -49,6 +53,7 @@ export async function refreshTokenIfNeeded(serverName) {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(body),
         },
+        agent,
       },
       (res) => {
         let data = '';

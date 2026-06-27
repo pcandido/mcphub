@@ -175,6 +175,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
       scopes: scopes || '',
       resource_url: server.url,
       port,
+      insecure: server.insecure,
     });
     console.log('  ✅ Authenticated.');
 

@@ -73,11 +73,11 @@ async function discoverViaRootWellKnown(serverUrl, insecure) {
     const protectedResource = await fetchJSON(`${origin}/.well-known/oauth-protected-resource`, insecure);
     if (!protectedResource) return null;
 
-    const authServer = protectedResource.authorization_server;
-    if (!authServer) return null;
+    const authServer = protectedResource.authorization_servers;
+    if (!authServer || !Array.isArray(authServer) || authServer.length === 0) return null;
 
-    const authServerUrl = resolveUrl(authServer, origin);
-    const authMetadata = await fetchJSON(`${authServerUrl}/.well-known/oauth-authorization-server`);
+    const authServerUrl = resolveUrl(authServer[0], origin);
+    const authMetadata = await fetchJSON(`${authServerUrl}/.well-known/oauth-authorization-server`, insecure);
     if (!authMetadata) return null;
 
     return buildMetadata(authMetadata);
@@ -123,7 +123,7 @@ async function discoverViaWwwAuthenticate(serverUrl, insecure) {
     const authServerUrl = authServers[0];
     // .well-known is always at the origin root — strip any path from authServerUrl
     const authOrigin = getOrigin(authServerUrl) || authServerUrl;
-    const authMetadata = await fetchJSON(`${authOrigin}/.well-known/oauth-authorization-server`);
+    const authMetadata = await fetchJSON(`${authOrigin}/.well-known/oauth-authorization-server`, insecure);
     if (!authMetadata) return null;
 
     return buildMetadata(authMetadata);
