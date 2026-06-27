@@ -351,7 +351,28 @@ export class SseClient {
       }
 
       // The response may be SSE-framed (event + data lines). Parse it.
-      return parseJsonOrSse(raw);
+      const json = parseJsonOrSse(raw);
+
+      // Auto-refresh when the upstream signals an expired OAuth token in the
+      // JSON-RPC error body (HTTP 200 with a descriptive message — the gateway
+      // reuses -32603 "Internal error" without a dedicated error code).
+      if (
+        json &&
+        typeof json === "object" &&
+        !_isRetry &&
+        this.serverName &&
+        json.error &&
+        typeof json.error.message === "string" &&
+        /\b(?:token.*expired|expired.*token)\b/i.test(json.error.message)
+      ) {
+        const newToken = await refreshTokenIfNeeded(this.serverName);
+        if (newToken) {
+          this._accessToken = newToken;
+          return this._post(urlStr, body, timeoutMs, true);
+        }
+      }
+
+      return json;
     } finally {
       clearTimeout(timer);
     }

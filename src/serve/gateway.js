@@ -11,7 +11,6 @@ import { ToolRegistry } from "../mcp/registry.js";
 import { loadConfig } from "../config/loader.js";
 import { StdioClient } from "../mcp/stdio-client.js";
 import { SseClient } from "../mcp/sse-client.js";
-import { get as keychainGet } from "../keychain/index.js";
 import { refreshTokenIfNeeded } from "../oauth/refresh.js";
 
 // ---------------------------------------------------------------------------
@@ -33,7 +32,8 @@ export async function startGateway() {
     console.error("[mcphub] No enabled servers found in config");
   }
 
-  // 3. Create upstream clients
+  // 3. Create upstream clients (synchronous — no network I/O yet)
+  /** @type {Array<{ name: string, client: object, server: object }>} */
   const upstreams = [];
 
   for (const [name, server] of enabled) {
@@ -44,41 +44,65 @@ export async function startGateway() {
           args: server.args,
           env: server.env,
         });
-        upstreams.push({ name, client });
+        upstreams.push({ name, client, server });
       } else if (server.type === "sse") {
         const client = new SseClient(name, {
           url: server.url,
           headers: server.headers,
           oauth: server.oauth,
+          timeout: server.timeout,
         });
-
-        // Handle OAuth if configured
-        if (server.oauth) {
-          const token = await refreshTokenIfNeeded(name);
-          if (token) {
-            client.setAccessToken(token);
-          } else {
-            console.error(
-              `[mcphub] No valid OAuth token for SSE server "${name}" — skipping`
-            );
-            continue;
-          }
-        }
-
-        upstreams.push({ name, client });
+        upstreams.push({ name, client, server });
       }
     } catch (err) {
       console.error(
         `[mcphub] Failed to create client for "${name}": ${err.message}`
       );
-      // Continue with remaining servers
     }
   }
 
-  // 4. Create registry
-  const registry = new ToolRegistry(upstreams);
+  // 4. Resolve OAuth tokens in parallel for SSE servers
+  const oauthResults = await Promise.allSettled(
+    upstreams
+      .filter((u) => u.server.type === "sse" && u.server.oauth)
+      .map(async (u) => {
+        const token = await refreshTokenIfNeeded(u.name);
+        return { name: u.name, token };
+      })
+  );
 
-  // 5. Start stdio readline loop
+  // Apply tokens and filter out servers with missing OAuth
+  const oauthByServer = {};
+  for (const result of oauthResults) {
+    if (result.status === "fulfilled" && result.value) {
+      oauthByServer[result.value.name] = result.value.token;
+    } else {
+      const name =
+        result.status === "fulfilled" ? result.value?.name : "unknown";
+      console.error(
+        `[mcphub] OAuth token resolution failed for "${name}"`
+      );
+    }
+  }
+
+  const activeUpstreams = upstreams.filter((u) => {
+    if (u.server.type === "sse" && u.server.oauth) {
+      const token = oauthByServer[u.name];
+      if (!token) {
+        console.error(
+          `[mcphub] No valid OAuth token for SSE server "${u.name}" — skipping`
+        );
+        return false;
+      }
+      u.client.setAccessToken(token);
+    }
+    return true;
+  });
+
+  // 5. Create registry
+  const registry = new ToolRegistry(activeUpstreams);
+
+  // 6. Start stdio readline loop
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
   rl.on("line", async (line) => {
@@ -226,7 +250,7 @@ export async function startGateway() {
     }
   });
 
-  // 6. Graceful shutdown
+  // 7. Graceful shutdown
   const shutdown = async () => {
     rl.close();
     registry.stop();

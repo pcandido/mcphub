@@ -60,7 +60,12 @@ export async function refreshTokenIfNeeded(serverName) {
       }
     );
 
+    req.on('timeout', () => {
+      req.destroy();
+      resolve(null);
+    });
     req.on('error', () => resolve(null));
+    req.setTimeout(10_000);
     req.write(body);
     req.end();
   });
