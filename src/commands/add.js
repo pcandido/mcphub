@@ -7,7 +7,7 @@ import { writeConfig } from '../config/writer.js';
 function showUsage() {
   process.stdout.write(
     'Usage: mcphub add <name> [--type stdio|sse] [--command <cmd>] [--args <a1,a2>] ' +
-    '[--env <K,V,...>] [--url <url>] [--description <desc>] [--oauth] [--timeout <ms>]\n'
+    '[--env <K,V,...>] [--url <url>] [--description <desc>] [--oauth] [--insecure] [--timeout <ms>]\n'
   );
 }
 
@@ -96,10 +96,13 @@ async function promptSse(rl) {
   const oauthRaw = (await rl.question('  OAuth required? [y/N]: ')).trim();
   const oauth = oauthRaw.toLowerCase() === 'y' || oauthRaw.toLowerCase() === 'yes';
 
+  const insecureRaw = (await rl.question('  Allow insecure TLS (self-signed certs)? [y/N]: ')).trim();
+  const insecure = insecureRaw.toLowerCase() === 'y' || insecureRaw.toLowerCase() === 'yes';
+
   const timeoutRaw = (await rl.question('  Timeout in ms (default 30000): ')).trim();
   const timeout = timeoutRaw ? parseInt(timeoutRaw, 10) : undefined;
 
-  return { url, description, oauth, timeout };
+  return { url, description, oauth, insecure, timeout };
 }
 
 /**
@@ -128,6 +131,10 @@ async function buildServerConfig(serverName, opts, existingConfig) {
       config.oauth = true;
     } else {
       config.oauth = false;
+    }
+
+    if (opts.insecure) {
+      config.insecure = true;
     }
 
     return config;
@@ -193,6 +200,7 @@ export default async function addServer(args) {
           url: sseOpts.url,
           description: sseOpts.description,
           oauth: sseOpts.oauth,
+          insecure: sseOpts.insecure,
           timeout: sseOpts.timeout,
         };
       }
@@ -262,6 +270,10 @@ export default async function addServer(args) {
 
       if (flags.oauth) {
         opts.oauth = true;
+      }
+
+      if (flags.insecure) {
+        opts.insecure = true;
       }
     }
 

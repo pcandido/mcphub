@@ -66,6 +66,14 @@ export class SseClient {
 
     /** @type {number} */
     this._nextId = 1;
+
+    /** @type {boolean} bypass certificate validation for self-signed certs */
+    this._insecure = !!config.insecure;
+
+    /** @type {import('node:https').Agent|undefined} */
+    this._agent = this._insecure
+      ? new https.Agent({ rejectUnauthorized: false })
+      : undefined;
   }
 
   // -----------------------------------------------------------------------
@@ -94,7 +102,7 @@ export class SseClient {
     const response = await new Promise((resolve, reject) => {
       const req = getModule.get(
         this.url.href,
-        { headers: getHeaders, signal },
+        { headers: getHeaders, signal, agent: this._agent },
         (res) => resolve(res),
       );
       req.on("error", (err) => reject(err));
@@ -303,6 +311,7 @@ export class SseClient {
               ...this._headers(),
             },
             signal: ac.signal,
+            agent: this._agent,
           },
           (res) => resolve(res),
         );

@@ -51,6 +51,7 @@ export async function startGateway() {
           headers: server.headers,
           oauth: server.oauth,
           timeout: server.timeout,
+          insecure: server.insecure,
         });
         upstreams.push({ name, client, server });
       }

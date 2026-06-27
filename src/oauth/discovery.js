@@ -22,19 +22,23 @@ import { URL } from 'node:url';
  *   3. POST <serverUrl> (no auth) → read resource_metadata from WWW-Authenticate header
  *
  * @param {string} serverUrl - The MCP server URL (e.g. https://example.com/mcp)
+ * @param {Object} [opts]
+ * @param {boolean} [opts.insecure] - Bypass TLS certificate validation for the MCP server
  * @returns {Promise<OAuthMetadata|null>}
  */
-export async function discoverOAuthMetadata(serverUrl) {
+export async function discoverOAuthMetadata(serverUrl, opts) {
+  const insecure = !!(opts && opts.insecure);
+
   // Strategy 1: path-level .well-known (server-relative)
-  let metadata = await discoverViaPathWellKnown(serverUrl);
+  let metadata = await discoverViaPathWellKnown(serverUrl, insecure);
   if (metadata) return metadata;
 
   // Strategy 2: root-level .well-known
-  metadata = await discoverViaRootWellKnown(serverUrl);
+  metadata = await discoverViaRootWellKnown(serverUrl, insecure);
   if (metadata) return metadata;
 
   // Strategy 3: POST to server, read WWW-Authenticate 401 header
-  metadata = await discoverViaWwwAuthenticate(serverUrl);
+  metadata = await discoverViaWwwAuthenticate(serverUrl, insecure);
   if (metadata) return metadata;
 
   return null;
@@ -44,12 +48,12 @@ export async function discoverOAuthMetadata(serverUrl) {
 // Strategy 1: GET <serverUrl>.well-known/oauth-authorization-server
 // ---------------------------------------------------------------------------
 
-async function discoverViaPathWellKnown(serverUrl) {
+async function discoverViaPathWellKnown(serverUrl, insecure) {
   try {
     // Normalize trailing slash: serverUrl/ + .well-known/oauth-authorization-server
     const base = serverUrl.endsWith('/') ? serverUrl : serverUrl + '/';
     const metadataUrl = `${base}.well-known/oauth-authorization-server`;
-    const authMetadata = await fetchJSON(metadataUrl);
+    const authMetadata = await fetchJSON(metadataUrl, insecure);
     if (!authMetadata) return null;
     return buildMetadata(authMetadata);
   } catch {
@@ -61,12 +65,12 @@ async function discoverViaPathWellKnown(serverUrl) {
 // Strategy 2: GET <origin>/.well-known/oauth-protected-resource → follow auth_server
 // ---------------------------------------------------------------------------
 
-async function discoverViaRootWellKnown(serverUrl) {
+async function discoverViaRootWellKnown(serverUrl, insecure) {
   try {
     const origin = getOrigin(serverUrl);
     if (!origin) return null;
 
-    const protectedResource = await fetchJSON(`${origin}/.well-known/oauth-protected-resource`);
+    const protectedResource = await fetchJSON(`${origin}/.well-known/oauth-protected-resource`, insecure);
     if (!protectedResource) return null;
 
     const authServer = protectedResource.authorization_server;
@@ -86,7 +90,7 @@ async function discoverViaRootWellKnown(serverUrl) {
 // Strategy 3: POST to server → read WWW-Authenticate → resource_metadata
 // ---------------------------------------------------------------------------
 
-async function discoverViaWwwAuthenticate(serverUrl) {
+async function discoverViaWwwAuthenticate(serverUrl, insecure) {
   try {
     // Send a minimal POST (no auth) to trigger a 401 with WWW-Authenticate
     const response = await postJson(serverUrl, JSON.stringify({
@@ -98,7 +102,7 @@ async function discoverViaWwwAuthenticate(serverUrl) {
         capabilities: {},
         clientInfo: { name: 'mcphub', version: '0.1.0' },
       },
-    }));
+    }), insecure);
 
     if (response.statusCode !== 401) return null;
 
@@ -109,7 +113,7 @@ async function discoverViaWwwAuthenticate(serverUrl) {
     if (!resourceMetaUrl) return null;
 
     // Fetch the resource metadata
-    const resourceMeta = await fetchJSON(resourceMetaUrl);
+    const resourceMeta = await fetchJSON(resourceMetaUrl, insecure);
     if (!resourceMeta) return null;
 
     // Get the authorization server URL
@@ -180,12 +184,19 @@ function resolveUrl(candidate, base) {
 
 /**
  * Fetch and parse JSON from a URL. Returns null on any failure.
+ *
+ * @param {string} url
+ * @param {boolean} [insecure]
  */
-function fetchJSON(url) {
+function fetchJSON(url, insecure) {
+  const agent = insecure && url.startsWith('https:')
+    ? new https.Agent({ rejectUnauthorized: false })
+    : undefined;
+
   return new Promise((resolve) => {
     const transport = url.startsWith('https:') ? https : http;
 
-    const req = transport.get(url, { timeout: 10000 }, (res) => {
+    const req = transport.get(url, { timeout: 10000, agent }, (res) => {
       if (res.statusCode < 200 || res.statusCode >= 300) {
         req.destroy();
         return resolve(null);
@@ -211,11 +222,19 @@ function fetchJSON(url) {
 
 /**
  * POST JSON to a URL and return the full response (status, headers, body).
+ *
+ * @param {string} urlStr
+ * @param {string} body
+ * @param {boolean} [insecure]
  */
-function postJson(urlStr, body) {
+function postJson(urlStr, body, insecure) {
+  const isHttps = urlStr.startsWith('https:');
+  const agent = isHttps && insecure
+    ? new https.Agent({ rejectUnauthorized: false })
+    : undefined;
+
   return new Promise((resolve) => {
-    const postUrl = new URL(urlStr);
-    const transport = postUrl.protocol === 'https:' ? https : http;
+    const transport = isHttps ? https : http;
 
     const req = transport.request(
       urlStr,
@@ -226,6 +245,7 @@ function postJson(urlStr, body) {
           Accept: 'application/json',
         },
         timeout: 10000,
+        agent,
       },
       (res) => {
         const chunks = [];

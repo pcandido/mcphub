@@ -119,7 +119,9 @@ async function authenticate(config, serverName, server, { force, clientId, scope
   }
 
   // 1. Discover OAuth metadata
-  const discovered = await discoverOAuthMetadata(server.url);
+  const discovered = await discoverOAuthMetadata(server.url, {
+    insecure: server.insecure,
+  });
   if (!discovered) {
     console.error('  ❌ OAuth metadata discovery failed.');
     return;
@@ -138,7 +140,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
   // 3. Resolve client_id: flag > saved > auto-register > error
   if (!clientId && discovered.registration_endpoint) {
     try {
-      const reg = await registerClient(discovered.registration_endpoint, redirectUri);
+      const reg = await registerClient(discovered.registration_endpoint, redirectUri, server.insecure);
       if (reg) {
         clientId = reg.client_id;
         console.log(`  Client registered (${clientId}).`);
@@ -188,7 +190,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
 /**
  * Dynamic client registration (RFC 7591).
  */
-function registerClient(registrationEndpoint, redirectUri) {
+function registerClient(registrationEndpoint, redirectUri, insecure) {
   return new Promise((resolve) => {
     const body = JSON.stringify({
       client_name: 'mcphub',
@@ -200,6 +202,9 @@ function registerClient(registrationEndpoint, redirectUri) {
 
     const url = new URL(registrationEndpoint);
     const transport = url.protocol === 'https:' ? https : http;
+    const agent = url.protocol === 'https:' && insecure
+      ? new https.Agent({ rejectUnauthorized: false })
+      : undefined;
 
     const req = transport.request(
       url.href,
@@ -211,6 +216,7 @@ function registerClient(registrationEndpoint, redirectUri) {
           'User-Agent': 'mcphub/0.3.1',
         },
         timeout: 10000,
+        agent,
       },
       (res) => {
         const chunks = [];
