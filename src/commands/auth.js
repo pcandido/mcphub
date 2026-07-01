@@ -167,13 +167,18 @@ async function authenticate(config, serverName, server, { force, clientId, scope
   }
 
   // 4. Run OAuth flow
+  // Only include resource (RFC 8707) if the server explicitly advertises support.
+  // Sending it to servers that don't support it causes server_error redirects.
+  const resourceUrl = discovered.resource_parameter_supported
+    ? server.url
+    : undefined;
   try {
     await runOAuthFlow(serverName, {
       authorization_url: discovered.authorization_url,
       token_url: discovered.token_url,
       client_id: clientId,
       scopes: scopes || '',
-      resource_url: server.url,
+      resource_url: resourceUrl,
       port,
       insecure: server.insecure,
     });
