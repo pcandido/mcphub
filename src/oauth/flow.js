@@ -155,9 +155,21 @@ async function _runOAuthFlow(serverName, metadata) {
 function startCallbackServer(port) {
   return new Promise((resolveStart, rejectStart) => {
     const server = http.createServer();
+    let handled = false;
+
+    // Resolves when the server socket is fully closed — ensures clean
+    // teardown before the next auth flow picks a (potentially same) port.
+    const closed = new Promise((r) => server.on('close', r));
 
     const authCodePromise = new Promise((resolve, reject) => {
       server.on('request', (req, res) => {
+        // Guard: ignore spurious/duplicate requests after the first callback
+        if (handled) {
+          res.writeHead(404);
+          res.end('Not found');
+          return;
+        }
+
         try {
           const url = new URL(req.url, `http://${req.headers.host}`);
           if (url.pathname !== '/callback') {
@@ -165,6 +177,8 @@ function startCallbackServer(port) {
             res.end('Not found');
             return;
           }
+
+          handled = true;
 
           const params = url.searchParams;
           const code = params.get('code');
@@ -174,14 +188,16 @@ function startCallbackServer(port) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(errorPage(error));
             server.close();
-            return reject(new Error(`OAuth error: ${error}`));
+            reject(new Error(`OAuth error: ${error}`));
+            return;
           }
 
           if (!code) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
             res.end(errorPage('No authorization code received.'));
             server.close();
-            return reject(new Error('No authorization code received'));
+            reject(new Error('No authorization code received'));
+            return;
           }
 
           // Success
@@ -197,8 +213,15 @@ function startCallbackServer(port) {
       });
     });
 
+    // Resolve only after the server is fully shut down — callers see the
+    // auth code only once the port is released. This prevents races when
+    // authenticating multiple servers back-to-back.
+    const managed = authCodePromise
+      .then((code) => closed.then(() => code))
+      .catch((err) => closed.then(() => { throw err; }));
+
     server.listen(port, '127.0.0.1', () => {
-      resolveStart({ authCodePromise });
+      resolveStart({ authCodePromise: managed });
     });
 
     server.on('error', (err) => {
