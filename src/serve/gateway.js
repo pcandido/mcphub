@@ -14,6 +14,40 @@ import { SseClient } from "../mcp/sse-client.js";
 import { refreshTokenIfNeeded } from "../oauth/refresh.js";
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Write a JSON-RPC message to stdout, catching broken-pipe errors.
+ * When stdout is broken the upstream process is gone — exit gracefully.
+ */
+function safeWrite(obj) {
+  try {
+    process.stdout.write(encodeMessage(obj));
+  } catch (err) {
+    if (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED") {
+      // Upstream client has disconnected — exit quietly.
+      process.exit(0);
+    }
+    // Unexpected write error — log and rethrow so the outer handler
+    // can decide whether to keep going.
+    console.error("[mcphub] stdout write failed:", err.message);
+    throw err;
+  }
+}
+
+/**
+ * Build a JSON-RPC error response.
+ */
+function errorResponse(id, code, message) {
+  return {
+    jsonrpc: "2.0",
+    id: id ?? null,
+    error: { code, message },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Gateway
 // ---------------------------------------------------------------------------
 
@@ -21,6 +55,28 @@ import { refreshTokenIfNeeded } from "../oauth/refresh.js";
 let cachedTools = [];
 
 export async function startGateway() {
+  // ═══════════════════════════════════════════════════════════
+  // Process-level safety nets
+  // ═══════════════════════════════════════════════════════════
+
+  // Prevent unhandled promise rejections from crashing the process.
+  // This is a safety net — all async code is already try/caught; this
+  // catches any edge case that slips through.
+  process.on("unhandledRejection", (reason) => {
+    console.error("[mcphub] unhandled rejection:", reason);
+  });
+
+  // Prevent uncaught exceptions from crashing the process.
+  process.on("uncaughtException", (err) => {
+    console.error("[mcphub] uncaught exception:", err.message);
+    // EPIPE means the parent process disconnected — exit gracefully.
+    if (err.code === "EPIPE" || err.code === "ERR_STREAM_DESTROYED") {
+      process.exit(0);
+    }
+    // For any other unexpected error, continue running.
+    // The error was logged; the gateway keeps serving remaining clients.
+  });
+
   // 1. Load config
   const config = await loadConfig();
 
@@ -111,15 +167,7 @@ export async function startGateway() {
     try {
       msg = parseMessage(line);
     } catch {
-      const resp = {
-        jsonrpc: "2.0",
-        id: null,
-        error: {
-          code: ErrorCode.PARSE_ERROR,
-          message: "Parse error",
-        },
-      };
-      process.stdout.write(encodeMessage(resp));
+      safeWrite(errorResponse(null, ErrorCode.PARSE_ERROR, "Parse error"));
       return;
     }
 
@@ -133,15 +181,9 @@ export async function startGateway() {
 
     // Must have method and id to be a request
     if (!msg.method || msg.id === undefined) {
-      const resp = {
-        jsonrpc: "2.0",
-        id: msg.id ?? null,
-        error: {
-          code: ErrorCode.INVALID_REQUEST,
-          message: "Invalid request",
-        },
-      };
-      process.stdout.write(encodeMessage(resp));
+      safeWrite(
+        errorResponse(msg.id ?? null, ErrorCode.INVALID_REQUEST, "Invalid request")
+      );
       return;
     }
 
@@ -165,28 +207,20 @@ export async function startGateway() {
           tools: toolList,
         };
 
-        const resp = { jsonrpc: "2.0", id: msg.id, result };
-        process.stdout.write(encodeMessage(resp));
+        safeWrite({ jsonrpc: "2.0", id: msg.id, result });
       } else if (msg.method === "tools/list") {
-        const resp = {
+        safeWrite({
           jsonrpc: "2.0",
           id: msg.id,
           result: { tools: cachedTools },
-        };
-        process.stdout.write(encodeMessage(resp));
+        });
       } else if (msg.method === "tools/call") {
         const name = msg.params?.name;
 
         if (!name || typeof name !== "string") {
-          const resp = {
-            jsonrpc: "2.0",
-            id: msg.id,
-            error: {
-              code: ErrorCode.INVALID_PARAMS,
-              message: "Missing or invalid tool name",
-            },
-          };
-          process.stdout.write(encodeMessage(resp));
+          safeWrite(
+            errorResponse(msg.id, ErrorCode.INVALID_PARAMS, "Missing or invalid tool name")
+          );
           return;
         }
 
@@ -195,15 +229,13 @@ export async function startGateway() {
           result = await registry.callTool(name, msg.params?.arguments);
         } catch (err) {
           if (err.message && err.message.startsWith("Unknown server:")) {
-            const resp = {
-              jsonrpc: "2.0",
-              id: msg.id,
-              error: {
-                code: ErrorCode.METHOD_NOT_FOUND,
-                message: `Tool not found: ${name}`,
-              },
-            };
-            process.stdout.write(encodeMessage(resp));
+            safeWrite(
+              errorResponse(
+                msg.id,
+                ErrorCode.METHOD_NOT_FOUND,
+                `Tool not found: ${name}`
+              )
+            );
             return;
           }
           // Re-throw for the outer catch to handle as internal error
@@ -220,34 +252,37 @@ export async function startGateway() {
           content = [{ type: "text", text: JSON.stringify(result) }];
         }
 
-        const resp = {
+        safeWrite({
           jsonrpc: "2.0",
           id: msg.id,
           result: { content },
-        };
-        process.stdout.write(encodeMessage(resp));
+        });
       } else {
         // Unknown method
-        const resp = {
-          jsonrpc: "2.0",
-          id: msg.id,
-          error: {
-            code: ErrorCode.METHOD_NOT_FOUND,
-            message: `Method not found: ${msg.method}`,
-          },
-        };
-        process.stdout.write(encodeMessage(resp));
+        safeWrite(
+          errorResponse(
+            msg.id,
+            ErrorCode.METHOD_NOT_FOUND,
+            `Method not found: ${msg.method}`
+          )
+        );
       }
     } catch (err) {
-      const resp = {
-        jsonrpc: "2.0",
-        id: msg.id,
-        error: {
-          code: ErrorCode.INTERNAL_ERROR,
-          message: err.message || "Internal error",
-        },
-      };
-      process.stdout.write(encodeMessage(resp));
+      // Internal errors — catch everything, never crash the gateway.
+      console.error(`[mcphub] request handler error: ${err.message}`);
+      try {
+        safeWrite(
+          errorResponse(
+            msg.id,
+            ErrorCode.INTERNAL_ERROR,
+            err.message || "Internal error"
+          )
+        );
+      } catch {
+        // If even the error response can't be written (broken pipe),
+        // the upstream is gone — exit gracefully.
+        process.exit(0);
+      }
     }
   });
 
