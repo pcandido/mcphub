@@ -17,7 +17,7 @@ export async function get(serverName) {
   try {
     const { stdout } = await execFileAsync(
       'secret-tool',
-      ['lookup', 'server', serverName],
+      ['lookup', 'application', 'mcphub', 'server', serverName],
       { timeout: TIMEOUT }
     );
     return JSON.parse(stdout.trim());
@@ -36,11 +36,14 @@ export async function get(serverName) {
 export async function set(serverName, secret) {
   const json = JSON.stringify(secret);
 
-  await execFileAsync(
+  const promise = execFileAsync(
     'secret-tool',
-    ['store', '--label=mcphub', 'server', serverName],
-    { timeout: TIMEOUT, input: json }
+    ['store', `--label=mcphub - server: ${serverName}`, 'application', 'mcphub', 'server', serverName],
+    { timeout: TIMEOUT }
   );
+  promise.child.stdin.write(json);
+  promise.child.stdin.end();
+  await promise;
 }
 
 /**
@@ -53,7 +56,7 @@ export async function del(serverName) {
   try {
     await execFileAsync(
       'secret-tool',
-      ['clear', 'server', serverName],
+      ['clear', 'application', 'mcphub', 'server', serverName],
       { timeout: TIMEOUT }
     );
   } catch {
