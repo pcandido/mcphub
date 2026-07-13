@@ -60,6 +60,16 @@ export async function set(serverName, secret) {
 }
 
 /**
+ * Check whether the macOS keychain is available.
+ * macOS always ships /usr/bin/security.
+ *
+ * @returns {Promise<{ok: boolean, advice: string}>}
+ */
+export async function checkAvailability() {
+  return { ok: true, advice: '' };
+}
+
+/**
  * Delete an OAuth secret from the macOS keychain.
  *
  * @param {string} serverName

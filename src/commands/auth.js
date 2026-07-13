@@ -153,7 +153,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
         });
       }
     } catch (err) {
-      console.log(`  Dynamic registration error: ${err.message}`);
+      console.log(`  Could not save client registration: ${err.message}`);
     }
   }
 

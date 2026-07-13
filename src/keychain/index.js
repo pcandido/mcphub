@@ -13,4 +13,4 @@ if (platform === 'darwin') {
   throw new Error(`Unsupported platform: ${platform}`);
 }
 
-export const { get, set, del } = backend;
+export const { get, set, del, checkAvailability } = backend;

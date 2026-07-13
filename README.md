@@ -25,6 +25,39 @@ npm install -g @pcandido/mcphub
 
 Requires Node.js >= 22.
 
+### Linux prerequisites (OAuth support)
+
+On Linux, OAuth secrets are stored via `secret-tool` (libsecret), which requires
+a running D-Bus secret service:
+
+```bash
+# Ubuntu / Debian
+sudo apt install libsecret-tools gnome-keyring
+
+# Fedora
+sudo dnf install libsecret gnome-keyring
+
+# Arch
+sudo pacman -S libsecret gnome-keyring
+```
+
+If you're on a **headless server** (no desktop), start the keyring daemon:
+
+```bash
+dbus-run-session -- gnome-keyring-daemon --unlock
+```
+
+Verify it's working:
+
+```bash
+echo "test" | secret-tool store --label="test" app test
+secret-tool lookup app test   # should print "test"
+secret-tool clear app test
+```
+
+> [!NOTE]
+> On macOS, the built-in Keychain is used — no extra setup needed.
+
 ## Quick Start
 
 Add a stdio MCP server:
