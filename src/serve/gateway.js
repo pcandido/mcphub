@@ -242,20 +242,24 @@ export async function startGateway() {
           throw err;
         }
 
-        // Format response as MCP tool result
-        let content;
-        if (result && Array.isArray(result.content)) {
-          // Already has a content array — pass through
-          content = result.content;
+        // Pass through the upstream result in full, preserving all
+        // fields (isError, structuredContent, _meta, etc.).
+        // Only wrap when content is missing or not an array.
+        let toolResult;
+        if (result && typeof result === "object" && !Array.isArray(result)) {
+          toolResult = { ...result };
+          if (!Array.isArray(toolResult.content)) {
+            toolResult.content = [{ type: "text", text: JSON.stringify(result) }];
+          }
         } else {
-          // Wrap scalar result in a text content block
-          content = [{ type: "text", text: JSON.stringify(result) }];
+          // Upstream returned a non-object (scalar, null, etc.) — wrap it
+          toolResult = { content: [{ type: "text", text: JSON.stringify(result) }] };
         }
 
         safeWrite({
           jsonrpc: "2.0",
           id: msg.id,
-          result: { content },
+          result: toolResult,
         });
       } else {
         // Unknown method
