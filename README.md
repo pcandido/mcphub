@@ -6,7 +6,7 @@
 [![license](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![dependencies](https://img.shields.io/badge/dependencies-zero-brightgreen)](package.json)
 
-A zero-dependency MCP gateway. Connect multiple AI harnesses to multiple MCP
+A zero-dependency MCP gateway. Connect multiple AI agents to multiple MCP
 servers through a single, centrally-managed stdio interface. No overhead, no
 bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in
 config files.
@@ -134,7 +134,7 @@ Omitting `--type` enters interactive mode — mcphub will prompt for each field.
 
 ## Gateway
 
-The gateway (`mcphub serve`) speaks MCP over stdio to the AI harness. On startup it:
+The gateway (`mcphub serve`) speaks MCP over stdio to the AI agent. On startup it:
 
 1. Reads `~/.mcphub.json`
 2. Connects to all **enabled** upstream servers in parallel

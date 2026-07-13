@@ -1,7 +1,7 @@
 {
   "name": "@pcandido/mcphub",
-  "version": "0.3.24",
-  "description": "A zero-dependency MCP gateway. Connect multiple AI harnesses to multiple MCP servers through a single, centrally-managed stdio interface. No overhead, no bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in config files.",
+  "version": "0.3.25",
+  "description": "A zero-dependency MCP gateway. Connect multiple AI agents to multiple MCP servers through a single, centrally-managed stdio interface. No overhead, no bloat — just the Node.js stdlib. Secrets stay in the OS keychain, never in config files.",
   "license": "MIT",
   "author": "Paulo Cândido",
   "repository": {
