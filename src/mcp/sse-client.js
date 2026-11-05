@@ -1,39 +1,14 @@
-// MCP SSE Client — HTTP-based transport that connects to an SSE endpoint
+// MCP SSE Client — HTTP-based transport that connects to an MCP endpoint
 //
-// Supports the Streamable HTTP transport from the MCP specification:
-//   - Opens a GET connection to receive SSE events
-//   - Sends JSON-RPC requests and notifications via POST to the endpoint URL
+// Implements the Streamable HTTP transport from the MCP specification:
+//   - Sends JSON-RPC requests and notifications via POST to the configured URL
+//   - Reads the JSON-RPC response from the POST response body
 //   - Handles OAuth token management via an Authorization header
 
 import { createRequest, createNotification } from "../mcp/protocol.js";
 import { refreshTokenIfNeeded } from "../oauth/refresh.js";
 import http from "node:http";
 import https from "node:https";
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve a potentially-relative URL against a base origin.
- *
- * @param {string} candidate  The URL from the SSE endpoint event (may be relative)
- * @param {URL} origin         The original connection URL
- * @returns {string}           Absolute URL string
- */
-function resolveEndpointUrl(candidate, origin) {
-  if (!candidate) return origin.href;
-
-  // Already absolute
-  if (/^https?:\/\//i.test(candidate)) return candidate;
-
-  // Relative — resolve against origin
-  // Handles both "/path" and "path" forms
-  if (candidate.startsWith("/")) {
-    return `${origin.origin}${candidate}`;
-  }
-  return `${origin.origin}/${candidate}`;
-}
 
 // ---------------------------------------------------------------------------
 // SseClient
@@ -52,11 +27,11 @@ export class SseClient {
     this.config = config;
     this.url = new URL(config.url);
 
-    /** @type {AbortController|null} */
-    this._ac = null;
+    /** @type {string} POST target — the configured URL */
+    this._endpointUrl = this.url.href;
 
-    /** @type {string|null} */
-    this._endpointUrl = null;
+    /** @type {boolean} */
+    this._started = false;
 
     /** @type {string|null} */
     this._accessToken = null;
@@ -81,83 +56,15 @@ export class SseClient {
   // -----------------------------------------------------------------------
 
   /**
-   * Start the SSE connection: open GET, parse events, discover the POST
-   * endpoint, and send an initialize request.
+   * Run the MCP initialize handshake.
+   *
+   * The POST goes straight to the configured URL. The Streamable HTTP
+   * transport does not require a prior GET stream, and there is no
+   * `endpoint` discovery event to await.
    *
    * @returns {Promise<object>} initialize response
    */
   async start() {
-    this._ac = new AbortController();
-    const { signal } = this._ac;
-
-    // Build GET headers
-    const getHeaders = {
-      Accept: "application/json, text/event-stream",
-      ...this._headers(),
-    };
-
-    // Open SSE stream --------------------------------------------------
-    const getModule = this.url.protocol === "https:" ? https : http;
-
-    const response = await new Promise((resolve, reject) => {
-      const req = getModule.get(
-        this.url.href,
-        { headers: getHeaders, signal, agent: this._agent },
-        (res) => resolve(res),
-      );
-      req.on("error", (err) => reject(err));
-    });
-
-    // Read SSE stream to discover endpoint ------------------------------
-    this._endpointUrl = await new Promise((resolve, reject) => {
-      let buffer = "";
-      const timer = setTimeout(() => {
-        // No endpoint event within 5s — fall back to original URL
-        resolve(null);
-      }, 5000);
-
-      response.on("data", (chunk) => {
-        buffer += chunk.toString("utf-8");
-
-        // SSE events are separated by double newlines
-        const parts = buffer.split(/\r?\n\r?\n/);
-        // Keep the last incomplete part in the buffer
-        buffer = parts.pop();
-
-        for (const part of parts) {
-          let eventType = null;
-          let data = null;
-
-          for (const line of part.split(/\r?\n/)) {
-            if (line.startsWith("event: ")) {
-              eventType = line.slice("event: ".length).trim();
-            } else if (line.startsWith("data: ")) {
-              data = line.slice("data: ".length).trim();
-            }
-          }
-
-          if (eventType === "endpoint" && data) {
-            clearTimeout(timer);
-            resolve(data);
-            return;
-          }
-        }
-      });
-
-      response.on("error", (err) => {
-        clearTimeout(timer);
-        reject(err);
-      });
-    });
-
-    // Resolve endpoint URL ----------------------------------------------
-    const postUrl = this._endpointUrl
-      ? resolveEndpointUrl(this._endpointUrl, this.url)
-      : this.url.href;
-
-    this._endpointUrl = postUrl;
-
-    // Send initialize request -------------------------------------------
     const initResponse = await this.request("initialize", {
       protocolVersion: "2024-11-05",
       capabilities: {},
@@ -167,27 +74,24 @@ export class SseClient {
       },
     });
 
+    this._started = true;
     return initResponse;
   }
 
   /**
-   * Stop the SSE connection and clean up.
+   * Mark the client as stopped.
    */
   stop() {
-    if (this._ac) {
-      this._ac.abort();
-      this._ac = null;
-    }
-    this._endpointUrl = null;
+    this._started = false;
   }
 
   /**
-   * Whether the client has an active connection.
+   * Whether the client has completed the initialize handshake.
    *
    * @returns {boolean}
    */
   get running() {
-    return this._ac !== null && !this._ac.signal.aborted;
+    return this._started;
   }
 
   // -----------------------------------------------------------------------

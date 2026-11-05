@@ -297,18 +297,16 @@ exit kills pending requests and cleans up.
 
 ### SSE / Streamable HTTP
 
-Opens a GET connection to the SSE endpoint to receive events and discover the
-POST endpoint (via the `endpoint` event). Falls back to the original URL if no
-endpoint event arrives within 5 seconds. Sends JSON-RPC requests via POST.
-Accepts both plain JSON and SSE-framed responses. Supports OAuth Bearer tokens
-via the `Authorization` header.
+Sends JSON-RPC requests via POST to the configured URL and reads the response
+from the POST response body. Accepts both plain JSON and SSE-framed responses.
+Supports OAuth Bearer tokens via the `Authorization` header.
 
 ## Development
 
 ```bash
 npm install
 npm run check   # syntax validation (all .js files)
-npm test        # 63 tests
+npm test        # 71 tests
 ```
 
 Zero external dependencies. Node.js 22+ stdlib only.
