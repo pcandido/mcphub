@@ -6,11 +6,16 @@ export class ToolRegistry {
    * @param {Array<{ name: string, client: import('./stdio-client.js').StdioClient|import('./sse-client.js').SseClient }>} upstreams
    */
   constructor(upstreams) {
-    /** @type {Array<{ name: string, client: object, tools: Array }>} */
-    this.#upstreams = upstreams.map((u) => ({ name: u.name, client: u.client, tools: [] }));
+    /** @type {Array<{ name: string, client: object, tools: Array, connected: boolean }>} */
+    this.#upstreams = upstreams.map((u) => ({
+      name: u.name,
+      client: u.client,
+      tools: [],
+      connected: false,
+    }));
   }
 
-  /** @type {Array<{ name: string, client: object, tools: Array }>} */
+  /** @type {Array<{ name: string, client: object, tools: Array, connected: boolean }>} */
   #upstreams;
 
   /** @type {Array} */
@@ -21,33 +26,37 @@ export class ToolRegistry {
   // ---------------------------------------------------------------------------
 
   /**
-   * Connect to all upstreams in parallel, fetch their tool lists, prefix every
-   * tool, apply allow/block filtering, and return the consolidated tool list.
+   * Connect to the upstreams that are not connected yet, in parallel, fetch
+   * their tool lists, prefix every tool, and apply allow/block filtering.
+   *
+   * Idempotent: upstreams that already connected are left untouched, so
+   * calling this again is cheap. Upstreams that failed on a previous call
+   * stay disconnected and are retried here.
    *
    * @returns {Promise<{ tools: Array }>} MCP-formatted tool list
    */
   async initialize() {
-    // Connect all upstreams in parallel
+    const pending = this.#upstreams.filter((up) => !up.connected);
+
     const results = await Promise.allSettled(
-      this.#upstreams.map(async (up) => {
+      pending.map(async (up) => {
         await up.client.start();
-        const rawTools = await up.client.listTools();
-        up.tools = rawTools;
+        up.tools = await up.client.listTools();
+        up.connected = true;
       })
     );
 
-    // Log failed upstreams and collect tools from successful ones
+    // Log failed upstreams — they stay disconnected and are retried later
+    for (let i = 0; i < pending.length; i++) {
+      if (results[i].status === "rejected") {
+        const reason = results[i].reason;
+        console.error(`[${pending[i].name}] Failed: ${reason?.message ?? reason}`);
+      }
+    }
+
     const allTools = [];
 
-    for (let i = 0; i < this.#upstreams.length; i++) {
-      const up = this.#upstreams[i];
-      const result = results[i];
-
-      if (result.status === "rejected") {
-        console.error(`[${up.name}] Failed: ${result.reason?.message ?? result.reason}`);
-        continue;
-      }
-
+    for (const up of this.#upstreams) {
       for (const tool of up.tools) {
         const prefixedName = `${up.name}__${tool.name}`;
         allTools.push({

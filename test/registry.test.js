@@ -5,14 +5,20 @@ import { ToolRegistry } from "../src/mcp/registry.js";
 
 // Fake MCP client that returns preset tools
 class FakeClient {
+  // shouldFail: true = always fail, number = fail that many times, then succeed
   constructor(name, tools, shouldFail = false) {
     this.name = name;
     this._tools = tools;
-    this._shouldFail = shouldFail;
+    this._failuresLeft = shouldFail === true ? Infinity : Number(shouldFail) || 0;
     this._started = false;
+    this.startCalls = 0;
   }
   async start() {
-    if (this._shouldFail) throw new Error(`${this.name}: connection refused`);
+    this.startCalls++;
+    if (this._failuresLeft > 0) {
+      this._failuresLeft--;
+      throw new Error(`${this.name}: connection refused`);
+    }
     this._started = true;
     return {};
   }
@@ -76,6 +82,32 @@ describe("ToolRegistry", () => {
 
       assert.equal(result.tools.length, 1);
       assert.equal(result.tools[0].name, "good__ping");
+    });
+
+    it("retries an upstream that failed on a previous initialize", async () => {
+      const client = new FakeClient("flaky", [
+        { name: "ping", description: "Pong" },
+      ], 1);
+      const registry = new ToolRegistry([{ name: "flaky", client }]);
+
+      const first = await registry.initialize();
+      assert.deepEqual(first.tools, []);
+
+      const second = await registry.initialize();
+      assert.deepEqual(second.tools.map((t) => t.name), ["flaky__ping"]);
+    });
+
+    it("does not reconnect an upstream that already connected", async () => {
+      const client = new FakeClient("srv", [
+        { name: "ping", description: "Pong" },
+      ]);
+      const registry = new ToolRegistry([{ name: "srv", client }]);
+
+      await registry.initialize();
+      const result = await registry.initialize();
+
+      assert.equal(client.startCalls, 1);
+      assert.deepEqual(result.tools.map((t) => t.name), ["srv__ping"]);
     });
   });
 

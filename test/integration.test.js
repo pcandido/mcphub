@@ -88,6 +88,54 @@ describe("Gateway Integration", () => {
     proc.kill();
   });
 
+  it("tools/list works without a prior initialize", async (t) => {
+    testDir = await setupConfig({
+      mock: {
+        type: "stdio",
+        enabled: true,
+        command: "node",
+        args: [MOCK_SERVER],
+      },
+    });
+
+    const proc = spawn("node", [BIN, "serve"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, HOME: process.env.HOME },
+    });
+    t.after(() => proc.kill());
+    const rl = createInterface({ input: proc.stdout });
+
+    const response = await gatewayRequest(proc, rl, 1, "tools/list", {});
+
+    const toolNames = response.result.tools.map((t) => t.name).sort();
+    assert.deepEqual(toolNames, ["mock__add", "mock__echo", "mock__get_time"]);
+  });
+
+  it("tools/call works without a prior initialize", async (t) => {
+    testDir = await setupConfig({
+      mock: {
+        type: "stdio",
+        enabled: true,
+        command: "node",
+        args: [MOCK_SERVER],
+      },
+    });
+
+    const proc = spawn("node", [BIN, "serve"], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, HOME: process.env.HOME },
+    });
+    t.after(() => proc.kill());
+    const rl = createInterface({ input: proc.stdout });
+
+    const response = await gatewayRequest(proc, rl, 1, "tools/call", {
+      name: "mock__echo",
+      arguments: { message: "no handshake" },
+    });
+
+    assert.equal(response.result.content[0].text, "Echo: no handshake");
+  });
+
   it("tools/call proxies to the correct upstream", async () => {
     testDir = await setupConfig({
       mock: {

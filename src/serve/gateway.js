@@ -51,9 +51,6 @@ function errorResponse(id, code, message) {
 // Gateway
 // ---------------------------------------------------------------------------
 
-/** @type {Array<object>} */
-let cachedTools = [];
-
 export async function startGateway() {
   // ═══════════════════════════════════════════════════════════
   // Process-level safety nets
@@ -159,6 +156,19 @@ export async function startGateway() {
   // 5. Create registry
   const registry = new ToolRegistry(activeUpstreams);
 
+  // Upstreams connect lazily, on the first request that needs tools. A client
+  // that skips the initialize handshake still gets a working gateway.
+  // The promise is memoized so concurrent requests share one connection pass.
+  // On failure it is dropped, so the next request retries.
+  let initPromise = null;
+  const ensureInitialized = () => {
+    initPromise ??= registry.initialize().catch((err) => {
+      initPromise = null;
+      throw err;
+    });
+    return initPromise;
+  };
+
   // 6. Start stdio readline loop
   const rl = createInterface({ input: process.stdin, crlfDelay: Infinity });
 
@@ -191,9 +201,8 @@ export async function startGateway() {
       if (msg.method === "initialize") {
         let toolList = [];
         try {
-          const initResult = await registry.initialize();
+          const initResult = await ensureInitialized();
           toolList = initResult.tools;
-          cachedTools = toolList;
         } catch (err) {
           console.error(
             `[mcphub] initialize failed, returning empty tools: ${err.message}`
@@ -209,10 +218,11 @@ export async function startGateway() {
 
         safeWrite({ jsonrpc: "2.0", id: msg.id, result });
       } else if (msg.method === "tools/list") {
+        const { tools } = await ensureInitialized();
         safeWrite({
           jsonrpc: "2.0",
           id: msg.id,
-          result: { tools: cachedTools },
+          result: { tools },
         });
       } else if (msg.method === "tools/call") {
         const name = msg.params?.name;
@@ -223,6 +233,8 @@ export async function startGateway() {
           );
           return;
         }
+
+        await ensureInitialized();
 
         let result;
         try {
