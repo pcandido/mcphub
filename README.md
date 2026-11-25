@@ -232,6 +232,22 @@ The flow is fully automatic:
 2. **Root-level** — `GET <origin>/.well-known/oauth-protected-resource` → follow `authorization_server`
 3. **WWW-Authenticate** — `POST` a minimal `initialize` request, read `resource_metadata` from the 401 response header
 
+### Scopes
+
+The scopes sent in the authorization request are the ones the **protected
+resource** requires (RFC 9728), fetched independently of the strategies above:
+`<origin>/.well-known/oauth-protected-resource<path>`, the origin form as
+fallback, or the `resource_metadata` URL announced in the 401 challenge when
+neither answers.
+
+That document is the only one that knows. The authorization server's own
+`scopes_supported` lists the provider's scopes (openid, profile, email), not the
+resource's — and a resource-scoped permission the request omits (a deployment
+that answers 401 with `scope="… mcp_x_permission"`) makes the server reject the
+token as `invalid_token`, indistinguishable from an expired one. When the
+resource declares no scopes, no `scope` parameter is sent at all and the server
+applies its defaults. `--scopes` replaces the whole set.
+
 ### Dynamic Client Registration (RFC 7591)
 
 If the server exposes a `registration_endpoint` in its metadata, mcphub
@@ -260,7 +276,17 @@ the keychain.
 If a token expires mid-session (HTTP 401 on any tool call), the SSE client
 automatically refreshes the token and retries the request once — the caller
 doesn't see the 401. Only if the refresh itself fails (e.g., refresh token
-expired) does the error propagate. Run `mcphub auth` to re-authenticate.
+expired) does the error propagate, reporting the server's own
+`error_description` and the scope the challenge requires:
+
+```
+OAuth token expired: Authentication failed. The provided bearer token is
+invalid, expired, or no longer recognized.; server requires scope: openid
+profile email mcp_rap_permission
+```
+
+The server's message is what distinguishes a refused token (a resource scope was
+never requested) from an expired one. Run `mcphub auth` to re-authenticate.
 
 ### Keychain
 

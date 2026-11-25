@@ -4,22 +4,34 @@ import http from 'node:http';
 import https from 'node:https';
 import { URL } from 'node:url';
 
+import { toScopeList } from './scopes.js';
+
 /**
  * @typedef {Object} OAuthMetadata
  * @property {string} authorization_url
  * @property {string} token_url
  * @property {string} [registration_endpoint]
- * @property {string[]} [scopes_supported]
+ * @property {boolean} [resource_parameter_supported]
+ * @property {string[]} [resource_scopes] - scopes the protected resource
+ *   requires (RFC 9728), which is what the authorization request asks for
  */
 
 /**
  * Discover OAuth server metadata from a server URL.
  * Best-effort — returns null on any failure.
  *
- * Three strategies, tried in order:
+ * Three strategies for the endpoints, tried in order:
  *   1. GET <serverUrl>.well-known/oauth-authorization-server (path-level)
  *   2. GET <origin>/.well-known/oauth-protected-resource → follow auth_server
  *   3. POST <serverUrl> (no auth) → read resource_metadata from WWW-Authenticate header
+ *
+ * Independently of those, the protected-resource metadata (RFC 9728) is fetched
+ * for its scopes: it is the only document that lists the scopes THIS resource
+ * requires, and it is the only scope source the authorization request uses. The
+ * authorization server's own `scopes_supported` is generic — a resource-scoped
+ * deployment answers 401 with `scope="… mcp_x_permission"` that never appears in
+ * the server metadata, and a token minted without it is rejected as
+ * `invalid_token`.
  *
  * @param {string} serverUrl - The MCP server URL (e.g. https://example.com/mcp)
  * @param {Object} [opts]
@@ -29,19 +41,31 @@ import { URL } from 'node:url';
 export async function discoverOAuthMetadata(serverUrl, opts) {
   const insecure = !!(opts && opts.insecure);
 
+  // Protected-resource metadata (RFC 9728) — best-effort, merged below into
+  // whichever strategy discovers the endpoints.
+  const protectedResource = await discoverProtectedResourceMetadata(serverUrl, insecure);
+  let resourceMetadata = protectedResource;
+
   // Strategy 1: path-level .well-known (server-relative)
   let metadata = await discoverViaPathWellKnown(serverUrl, insecure);
-  if (metadata) return metadata;
 
   // Strategy 2: root-level .well-known
-  metadata = await discoverViaRootWellKnown(serverUrl, insecure);
-  if (metadata) return metadata;
+  if (!metadata) {
+    metadata = await discoverViaRootWellKnown(serverUrl, insecure, protectedResource);
+  }
 
   // Strategy 3: POST to server, read WWW-Authenticate 401 header
-  metadata = await discoverViaWwwAuthenticate(serverUrl, insecure);
-  if (metadata) return metadata;
+  if (!metadata) {
+    const viaHeader = await discoverViaWwwAuthenticate(serverUrl, insecure);
+    if (viaHeader) {
+      metadata = viaHeader.metadata;
+      resourceMetadata = resourceMetadata || viaHeader.protectedResource;
+    }
+  }
 
-  return null;
+  if (!metadata) return null;
+
+  return applyResourceScopes(metadata, resourceMetadata);
 }
 
 // ---------------------------------------------------------------------------
@@ -65,12 +89,15 @@ async function discoverViaPathWellKnown(serverUrl, insecure) {
 // Strategy 2: GET <origin>/.well-known/oauth-protected-resource → follow auth_server
 // ---------------------------------------------------------------------------
 
-async function discoverViaRootWellKnown(serverUrl, insecure) {
+async function discoverViaRootWellKnown(serverUrl, insecure, knownProtectedResource) {
   try {
     const origin = getOrigin(serverUrl);
     if (!origin) return null;
 
-    const protectedResource = await fetchJSON(`${origin}/.well-known/oauth-protected-resource`, insecure);
+    // The caller already fetched the protected-resource metadata for this URL
+    // (per-path first, same document) — reuse it instead of a second GET.
+    const protectedResource = knownProtectedResource
+      || await fetchJSON(`${origin}/.well-known/oauth-protected-resource`, insecure);
     if (!protectedResource) return null;
 
     const authServer = protectedResource.authorization_servers;
@@ -126,10 +153,64 @@ async function discoverViaWwwAuthenticate(serverUrl, insecure) {
     const authMetadata = await fetchJSON(`${authOrigin}/.well-known/oauth-authorization-server`, insecure);
     if (!authMetadata) return null;
 
-    return buildMetadata(authMetadata);
+    // Hand both documents back: the 401 header is often the only place the
+    // protected-resource metadata (and therefore the resource scopes) is announced.
+    return { metadata: buildMetadata(authMetadata), protectedResource: resourceMeta };
   } catch {
     return null;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Protected-resource metadata (RFC 9728)
+// ---------------------------------------------------------------------------
+
+/**
+ * Fetch the protected-resource metadata for a server URL.
+ * The canonical location for a resource with a path is
+ * `<origin>/.well-known/oauth-protected-resource<path>`; the bare origin form is
+ * the fallback for deployments that publish a single document per host.
+ *
+ * @param {string} serverUrl
+ * @param {boolean} [insecure]
+ * @returns {Promise<Object|null>}
+ */
+async function discoverProtectedResourceMetadata(serverUrl, insecure) {
+  const origin = getOrigin(serverUrl);
+  if (!origin) return null;
+
+  let path = '';
+  try {
+    path = new URL(serverUrl).pathname.replace(/\/+$/, '');
+  } catch {
+    // no path — the origin form below is the only option
+  }
+
+  if (path && path !== '/') {
+    const perPath = await fetchJSON(`${origin}/.well-known/oauth-protected-resource${path}`, insecure);
+    if (perPath) return perPath;
+  }
+
+  return fetchJSON(`${origin}/.well-known/oauth-protected-resource`, insecure);
+}
+
+/**
+ * Apply the scopes the resource declares to the discovered metadata.
+ * Returns the metadata untouched when the resource declares none — asking for
+ * nothing is the correct fallback (see the Scopes section of the README).
+ *
+ * @param {OAuthMetadata} metadata
+ * @param {Object|null} protectedResource
+ * @returns {OAuthMetadata}
+ */
+function applyResourceScopes(metadata, protectedResource) {
+  const scopes = toScopeList(protectedResource && protectedResource.scopes_supported);
+
+  if (scopes.length > 0) {
+    metadata.resource_scopes = scopes;
+  }
+
+  return metadata;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,9 +224,10 @@ function buildMetadata(authMetadata) {
     token_url: authMetadata.token_endpoint,
   };
 
-  if (authMetadata.scopes_supported) {
-    result.scopes_supported = authMetadata.scopes_supported;
-  }
+  // The server's own scopes_supported is deliberately NOT carried over: it
+  // lists the provider's scopes (openid, profile, email), not what the resource
+  // requires. Requesting it is what af18437 removed; resource_scopes (below)
+  // replaces it with the document that actually knows.
   if (authMetadata.registration_endpoint) {
     result.registration_endpoint = authMetadata.registration_endpoint;
   }
