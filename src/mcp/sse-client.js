@@ -239,7 +239,7 @@ export class SseClient {
             return this._post(urlStr, body, timeoutMs, true);
           }
         }
-        throw new Error("OAuth token expired");
+        throw oauthTokenError(raw, response.headers);
       }
 
       if (!response.statusCode || response.statusCode >= 400) {
@@ -325,4 +325,64 @@ function parseJsonOrSse(raw) {
   }
 
   throw new Error(`Unexpected response format: ${trimmed.slice(0, 200)}`);
+}
+
+/**
+ * Build the OAuth 401 error, keeping whatever the server said about it.
+ *
+ * A token the server refuses and an expired one answer identically (401); the
+ * JSON body (`error` / `error_description`) and the WWW-Authenticate challenge
+ * are the only things that tell them apart — the challenge carries the scope
+ * list the resource enforces, and a token minted without a resource-scoped
+ * permission is rejected exactly like an expired one. Without this, both cases
+ * collapse into a message that points the user at the wrong fix.
+ *
+ * @param {string} raw - response body
+ * @param {Object} [headers]
+ * @returns {Error}
+ */
+function oauthTokenError(raw, headers) {
+  const parts = [];
+
+  const description = parseOAuthErrorDescription(raw);
+  if (description) parts.push(description);
+
+  const scope = parseWwwAuthenticateParam(headers && headers["www-authenticate"], "scope");
+  if (scope) parts.push(`server requires scope: ${scope}`);
+
+  const err = new Error(
+    parts.length > 0 ? `OAuth token expired: ${parts.join("; ")}` : "OAuth token expired",
+  );
+  err.statusCode = 401;
+  return err;
+}
+
+/**
+ * @param {string} raw
+ * @returns {string} the server's own error description, or ""
+ */
+function parseOAuthErrorDescription(raw) {
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed.error_description || parsed.error || "";
+    }
+  } catch {
+    // not JSON — nothing to add
+  }
+  return "";
+}
+
+/**
+ * Read a quoted parameter out of a WWW-Authenticate header.
+ * e.g. scope="openid profile email mcp_x_permission" → the scope list
+ *
+ * @param {string|undefined} header
+ * @param {string} paramName
+ * @returns {string}
+ */
+function parseWwwAuthenticateParam(header, paramName) {
+  if (!header) return "";
+  const match = header.match(new RegExp(`${paramName}\\s*=\\s*"([^"]+)"`, "i"));
+  return match ? match[1] : "";
 }

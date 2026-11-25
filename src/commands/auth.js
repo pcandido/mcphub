@@ -4,8 +4,9 @@ import http from 'node:http';
 import { loadConfig } from '../config/loader.js';
 import { writeConfig } from '../config/writer.js';
 import { get as keychainGet, set as keychainSet } from '../keychain/index.js';
-import { refreshTokenIfNeeded } from '../oauth/refresh.js';
+import { refreshTokenIfNeeded, lastRefreshError } from '../oauth/refresh.js';
 import { discoverOAuthMetadata } from '../oauth/discovery.js';
+import { resolveRequestedScopes } from '../oauth/scopes.js';
 import { runOAuthFlow, pickFreePort } from '../oauth/flow.js';
 
 function parseFlags(args) {
@@ -98,7 +99,8 @@ async function authenticate(config, serverName, server, { force, clientId, scope
         }
         return;
       }
-      console.log('  ⚠️  Token refresh failed — starting OAuth flow...');
+      const reason = lastRefreshError(serverName);
+      console.log(`  ⚠️  Token refresh failed${reason ? `: ${reason}` : ''} — starting OAuth flow...`);
 
       // Reuse saved client_id if available
       if (!clientId && secret.client_id) {
@@ -127,6 +129,10 @@ async function authenticate(config, serverName, server, { force, clientId, scope
     return;
   }
   console.log('  Metadata discovered.');
+
+  if (discovered.resource_scopes && discovered.resource_scopes.length > 0) {
+    console.log(`  Scopes: ${discovered.resource_scopes.join(' ')}`);
+  }
 
   if (!discovered.authorization_url || !discovered.token_url) {
     console.error('  ❌ Authorization or token endpoint not found in server metadata.');
@@ -177,7 +183,7 @@ async function authenticate(config, serverName, server, { force, clientId, scope
       authorization_url: discovered.authorization_url,
       token_url: discovered.token_url,
       client_id: clientId,
-      scopes: scopes || '',
+      scopes: resolveRequestedScopes(scopes, discovered),
       resource_url: resourceUrl,
       port,
       insecure: server.insecure,

@@ -95,3 +95,55 @@ describe("SseClient", () => {
     assert.equal(client.running, false);
   });
 });
+
+// A 401 that survives the refresh: the server's own diagnosis must reach the
+// user, because "expired" and "refused" are otherwise the same message.
+describe("SseClient — OAuth 401", () => {
+  const CHALLENGE =
+    'Bearer error="invalid_token", scope="openid profile email mcp_rap_permission", ' +
+    'error_description="The provided bearer token is invalid"';
+
+  function startRejectingServer() {
+    const server = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        res.writeHead(401, {
+          "Content-Type": "application/json",
+          "WWW-Authenticate": CHALLENGE,
+        });
+        res.end(
+          JSON.stringify({
+            error: "invalid_token",
+            error_description:
+              "Authentication failed. The provided bearer token is invalid, expired, or no longer recognized.",
+          }),
+        );
+      });
+    });
+    return server;
+  }
+
+  it("reports the server's error and the required scope instead of a bare expiry", async () => {
+    const server = startRejectingServer();
+    await new Promise((resolve) => server.listen(0, resolve));
+    const url = `http://127.0.0.1:${server.address().port}/mcp`;
+
+    try {
+      const client = new SseClient("no-such-server-in-keychain", { url });
+      await assert.rejects(
+        () => client.listTools(),
+        (err) => {
+          assert.match(err.message, /^OAuth token expired/);
+          assert.match(err.message, /no longer recognized/);
+          assert.match(err.message, /server requires scope: openid profile email mcp_rap_permission/);
+          assert.equal(err.statusCode, 401);
+          return true;
+        },
+      );
+    } finally {
+      server.closeAllConnections();
+      server.close();
+    }
+  });
+});
