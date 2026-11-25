@@ -2,7 +2,7 @@ import { loadConfig } from '../config/loader.js';
 import { StdioClient } from '../mcp/stdio-client.js';
 import { SseClient } from '../mcp/sse-client.js';
 import { get as keychainGet } from '../keychain/index.js';
-import { refreshTokenIfNeeded } from '../oauth/refresh.js';
+import { refreshTokenIfNeeded, lastRefreshError } from '../oauth/refresh.js';
 
 export default async function getServer(args) {
   const serverName = args[0];
@@ -70,7 +70,12 @@ async function handleSse(serverName, server) {
 
     token = await refreshTokenIfNeeded(serverName);
     if (!token) {
-      console.error('Token expired and refresh failed. Run: mcphub auth ' + serverName);
+      const reason = lastRefreshError(serverName);
+      console.error(
+        'Token expired and refresh failed' +
+          (reason ? `: ${reason}` : '') +
+          '. Run: mcphub auth ' + serverName,
+      );
       process.exit(1);
     }
   }
@@ -97,8 +102,9 @@ async function handleSse(serverName, server) {
     const tools = await client.listTools();
     printTools(tools);
   } catch (err) {
-    if (err.message === 'OAuth token expired' || (err.statusCode && err.statusCode === 401)) {
-      console.error('Token expired during request. Run: mcphub auth ' + serverName);
+    if (err.message.startsWith('OAuth token expired') || (err.statusCode && err.statusCode === 401)) {
+      console.error(err.message);
+      console.error('Run: mcphub auth ' + serverName);
     } else {
       console.error(err.message);
     }

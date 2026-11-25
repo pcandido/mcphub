@@ -2,6 +2,46 @@ import https from 'node:https';
 import http from 'node:http';
 import { get, set } from '../keychain/index.js';
 
+// Why the last refresh of each server failed. The `null` return of
+// refreshTokenIfNeeded says "it did not work" — this keeps the token endpoint's
+// own explanation (`error`, `error_description`), which is the difference
+// between an expired token, a revoked one and one minted without the scope the
+// resource requires.
+const _lastFailures = new Map();
+
+/**
+ * @param {string} serverName
+ * @returns {string} the last refresh failure for this server, or '' when the
+ *   last refresh succeeded (or none was attempted)
+ */
+export function lastRefreshError(serverName) {
+  return _lastFailures.get(serverName) || '';
+}
+
+/**
+ * Turn a failed token-endpoint response into a one-line reason.
+ * Pure — the plumbing that stores it is not testable without a keychain.
+ *
+ * @param {string} body - response body
+ * @param {number} [statusCode]
+ * @returns {string}
+ */
+export function tokenEndpointFailureReason(body, statusCode) {
+  let detail = '';
+  try {
+    const parsed = JSON.parse(body);
+    if (parsed && typeof parsed === 'object') {
+      detail = parsed.error_description || parsed.error || '';
+    }
+  } catch {
+    // not JSON — fall through to the status code
+  }
+
+  if (detail) return detail;
+  if (statusCode) return `token endpoint returned HTTP ${statusCode}`;
+  return 'token endpoint request failed';
+}
+
 /**
  * Returns the current valid access_token for the given server,
  * refreshing it if expired or about to expire (within 30 seconds).
@@ -11,6 +51,8 @@ import { get, set } from '../keychain/index.js';
  * @returns {Promise<string|null>}
  */
 export async function refreshTokenIfNeeded(serverName) {
+  _lastFailures.delete(serverName);
+
   const secret = await get(serverName);
   if (!secret) {
     return null;
@@ -64,6 +106,7 @@ export async function refreshTokenIfNeeded(serverName) {
           if (res.statusCode === 200) {
             resolve(data);
           } else {
+            _lastFailures.set(serverName, tokenEndpointFailureReason(data, res.statusCode));
             resolve(null);
           }
         });
@@ -72,9 +115,13 @@ export async function refreshTokenIfNeeded(serverName) {
 
     req.on('timeout', () => {
       req.destroy();
+      _lastFailures.set(serverName, tokenEndpointFailureReason('', 0));
       resolve(null);
     });
-    req.on('error', () => resolve(null));
+    req.on('error', () => {
+      _lastFailures.set(serverName, tokenEndpointFailureReason('', 0));
+      resolve(null);
+    });
     req.setTimeout(10_000);
     req.write(body);
     req.end();
@@ -87,6 +134,7 @@ export async function refreshTokenIfNeeded(serverName) {
     payload = JSON.parse(result);
   } catch {
     console.warn('[oauth] Token refresh returned non-JSON response');
+    _lastFailures.set(serverName, 'token endpoint returned a non-JSON response');
     return null;
   }
 
@@ -104,6 +152,7 @@ export async function refreshTokenIfNeeded(serverName) {
     await set(serverName, updatedSecret);
   } catch (err) {
     console.warn('[oauth] Failed to persist refreshed token:', err.message);
+    _lastFailures.set(serverName, `could not store the refreshed token: ${err.message}`);
     return null;
   }
 
